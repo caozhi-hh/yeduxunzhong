@@ -3,8 +3,8 @@ title: 野渡寻踪 - AI 旅行攻略
 emoji: 🌿
 colorFrom: green
 colorTo: emerald
-sdk: streamlit
-sdk_version: "1.56.0"
+sdk: docker
+app_port: 8501
 app_file: app.py
 pinned: false
 license: mit
