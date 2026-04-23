@@ -1,0 +1,6 @@
+langchain-openai
+langgraph
+langgraph-checkpoint
+streamlit
+python-docx
+requests
