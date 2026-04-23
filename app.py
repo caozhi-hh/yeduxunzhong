@@ -239,6 +239,63 @@ h1 { font-weight: 700; }
 .stProgress > div > div > div {
     background: linear-gradient(90deg, #66BB6A, #2E7D32);
 }
+
+/* ===== 移动端适配 ===== */
+@media (max-width: 768px) {
+    /* 侧边栏收起 */
+    [data-testid="stSidebar"] {
+        width: 280px !important;
+    }
+    /* 首页标题缩小 */
+    h1 {
+        font-size: 1.8rem !important;
+    }
+    .feature-card {
+        padding: 16px 12px;
+        margin-bottom: 8px;
+    }
+    .feature-icon {
+        font-size: 1.8rem;
+    }
+    .feature-title {
+        font-size: 0.95rem;
+    }
+    .feature-desc {
+        font-size: 0.8rem;
+    }
+    /* 流程步骤缩小 */
+    .step-num {
+        width: 28px;
+        height: 28px;
+        font-size: 0.85rem;
+    }
+    .step-text {
+        font-size: 0.82rem;
+    }
+    /* 聊天区域 */
+    .stChatMessage {
+        padding: 8px 10px;
+        font-size: 0.95rem;
+    }
+    /* 快捷按钮 */
+    .quick-btn, [data-testid="stBaseButton-secondary"] {
+        font-size: 0.8rem !important;
+        padding: 6px 12px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    h1 {
+        font-size: 1.5rem !important;
+    }
+    .feature-card {
+        padding: 12px 10px;
+    }
+    .step-arrow {
+        font-size: 1rem;
+        margin: 0 2px;
+    }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -402,23 +459,25 @@ if not st.session_state.messages and not st.session_state.ai_recommendation:
     st.markdown("<p style='font-size:1.15rem; color:#666; text-align:center;'>AI 智能旅行攻略规划师 — 从景点推荐到详细行程，一站搞定</p>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # 特色卡片
-    cols = st.columns(4)
+    # 特色卡片（2x2 布局，移动端友好）
     features = [
         ("🎯", "AI 智能推荐", "根据你的预算和风格\n精准推荐必去景点"),
         ("🎨", "AI 生成景点图", "每个景点自动生成\n沉浸式预览图片"),
         ("🗺️", "智能路线规划", "不走回头路\n每天行程最优安排"),
         ("📄", "一键导出攻略", "详细攻略导出 Word\n离线也能随时查看"),
     ]
-    for i, (icon, title, desc) in enumerate(features):
-        with cols[i]:
-            st.markdown(f"""
-            <div class="feature-card">
-                <div class="feature-icon">{icon}</div>
-                <div class="feature-title">{title}</div>
-                <div class="feature-desc">{desc.replace(chr(10), '<br>')}</div>
-            </div>
-            """, unsafe_allow_html=True)
+    for row in range(0, len(features), 2):
+        row_features = features[row:row+2]
+        row_cols = st.columns(len(row_features))
+        for i, (icon, title, desc) in enumerate(row_features):
+            with row_cols[i]:
+                st.markdown(f"""
+                <div class="feature-card">
+                    <div class="feature-icon">{icon}</div>
+                    <div class="feature-title">{title}</div>
+                    <div class="feature-desc">{desc.replace(chr(10), '<br>')}</div>
+                </div>
+                """, unsafe_allow_html=True)
 
     # 流程步骤
     st.markdown("""
@@ -611,40 +670,42 @@ if st.session_state.phase in ("modify", "done"):
     if st.session_state.current_plan:
         st.markdown("---")
         st.markdown("**💬 快捷调整：**")
-        quick_cols = st.columns(4)
         quick_actions = ["太累了，减少景点", "预算超了", "加个景点", "换天安排"]
-        for i, action in enumerate(quick_actions):
-            with quick_cols[i]:
-                if st.button(action, key=f"quick_{action}"):
-                    st.session_state.messages.append(HumanMessage(content=action))
-                    st.session_state.phase = "modify"
+        for row in range(0, len(quick_actions), 2):
+            row_actions = quick_actions[row:row+2]
+            quick_cols = st.columns(len(row_actions))
+            for i, action in enumerate(row_actions):
+                with quick_cols[i]:
+                    if st.button(action, key=f"quick_{action}"):
+                        st.session_state.messages.append(HumanMessage(content=action))
+                        st.session_state.phase = "modify"
 
-                    with st.chat_message("user", avatar="🧑"):
-                        st.markdown(action)
+                        with st.chat_message("user", avatar="🧑"):
+                            st.markdown(action)
 
-                    with st.chat_message("assistant", avatar="🌿"):
-                        with st.spinner("🌿 AI 正在调整攻略..."):
-                            config = {"configurable": {"thread_id": st.session_state.thread_id}}
-                            state_input = {
-                                "messages": st.session_state.messages,
-                                "user_input": st.session_state.user_params,
-                                "phase": st.session_state.phase,
-                                "plan": st.session_state.current_plan,
-                            }
+                        with st.chat_message("assistant", avatar="🌿"):
+                            with st.spinner("🌿 AI 正在调整攻略..."):
+                                config = {"configurable": {"thread_id": st.session_state.thread_id}}
+                                state_input = {
+                                    "messages": st.session_state.messages,
+                                    "user_input": st.session_state.user_params,
+                                    "phase": st.session_state.phase,
+                                    "plan": st.session_state.current_plan,
+                                }
 
-                            full_response = ""
-                            placeholder = st.empty()
-                            for event in langgraph_app.stream(state_input, config=config, stream_mode="messages"):
-                                if isinstance(event, tuple) and len(event) == 2:
-                                    chunk, metadata = event
-                                    if isinstance(chunk, AIMessage) and isinstance(chunk.content, str) and chunk.content:
-                                        full_response += chunk.content
-                                        placeholder.markdown(full_response)
+                                full_response = ""
+                                placeholder = st.empty()
+                                for event in langgraph_app.stream(state_input, config=config, stream_mode="messages"):
+                                    if isinstance(event, tuple) and len(event) == 2:
+                                        chunk, metadata = event
+                                        if isinstance(chunk, AIMessage) and isinstance(chunk.content, str) and chunk.content:
+                                            full_response += chunk.content
+                                            placeholder.markdown(full_response)
 
-                    if full_response:
-                        st.session_state.current_plan = full_response
-                        st.session_state.messages.append(AIMessage(content=full_response))
-                    st.rerun()
+                        if full_response:
+                            st.session_state.current_plan = full_response
+                            st.session_state.messages.append(AIMessage(content=full_response))
+                        st.rerun()
 
     # 聊天输入
     if prompt := st.chat_input("输入消息，比如：太累了减少景点 / 预算超了 / 加个景点..."):

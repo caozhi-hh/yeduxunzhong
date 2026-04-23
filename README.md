@@ -2,7 +2,7 @@
 title: 野渡寻踪 - AI 旅行攻略
 emoji: 🌿
 colorFrom: green
-colorTo: emerald
+colorTo: green
 sdk: docker
 app_port: 8501
 app_file: app.py
