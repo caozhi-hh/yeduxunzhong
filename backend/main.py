@@ -118,21 +118,38 @@ async def recommend(req: RecommendRequest):
     params = req.params
     session = get_session(req.session_id)
 
-    prompt = f"""我想从{params.get('from_city','')}去{params.get('to_city','')}旅行{params.get('days',3)}天（{params.get('dep_datetime','')}到达，{params.get('ret_datetime','')}返程），预算{params.get('budget',3000)}元，旅行类型是"{params.get('travel_type','性价比出行')}"，用户类型是"{params.get('user_type','成人')}"。
-交通方式：去程{params.get('transport_go','高铁')}，返程{params.get('transport_back','高铁')}。
-住宿偏好：{params.get('accommodation','经济酒店')}。
-同行{params.get('companions_count',1)}人，关系：{params.get('companion_type','独自出行')}。
+    dep = params.get('dep_datetime', '')
+    ret = params.get('ret_datetime', '')
+    from_city = params.get('from_city', '')
+    to_city = params.get('to_city', '')
 
-请帮我推荐{params.get('to_city','')}的热门景点。**输出格式要求**：
+    prompt = f"""我想从{from_city}去{to_city}旅行{params.get('days',3)}天，{dep}到达，{ret}返程。预算{params.get('budget',3000)}元，旅行类型"{params.get('travel_type','性价比出行')}"，用户类型"{params.get('user_type','成人')}"。
+交通：去程{params.get('transport_go','高铁')}，返程{params.get('transport_back','高铁')}。住宿：{params.get('accommodation','经济酒店')}。同行{params.get('companions_count',1)}人，{params.get('companion_type','独自出行')}。
 
-## 门票预约抢票提醒
-在最前面放一张门票预约总览表，包含：景点名、游玩日期、放票时间（精确到几点几分）、最晚预约时间、预约渠道、门票价格、是否必须预约、紧急程度（需立即抢/建议提前/可选）。用表格展示，紧急程度用加粗标红。
+请推荐{to_city}的热门景点，**严格按以下顺序输出**：
+
+## 门票预约抢票日历
+
+根据用户的出发日期（{dep}），计算每个景点的**具体抢票日期和几点几分开抢**。
+
+输出两张表：
+
+**表1：抢票时间表**
+| 景点 | 游玩日期 | 抢票日期 | 开抢时间 | 预约渠道（具体到微信小程序名/APP名） | 门票全价 | 优惠价 | 紧急程度 |
+紧急程度分三级：**已过抢票时间**（标红加粗）、**即将开抢**（加粗）、**充裕**
+如果某个景点的抢票日期已经过了，在备注栏写明替代方案。
+
+**表2：抢票实战技巧**
+针对每个需要抢票的景点，给出具体技巧：
+- 故宫：提前7天20:00放票 → 建议19:58进入小程序，提前选好日期和人数，20:00:00准时提交。身份证信息提前填好，不要犹豫。
+- 类似格式，每个景点一条技巧
 
 ## 推荐景点
-然后推荐 6-10 个大景点，每个景点用 **景点名** 加粗，包含门票价格（全价和优惠价）、游玩时长、推荐指数、一句话描述，按地理位置分组。"""
+推荐 6-10 个大景点，每个用 **景点名** 加粗，含门票价格（全价和{params.get('user_type','成人')}优惠价）、游玩时长、推荐指数、一句话描述，按地理位置分组。"""
 
     messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=prompt)]
     session["messages"] = messages
+    session["params"] = params
 
     def stream():
         full_response = yield from stream_llm(messages)
@@ -190,10 +207,16 @@ async def generate_image(req: ImageRequest):
 @app.get("/api/export-word")
 async def export_word(session_id: str, title: str = "旅行攻略"):
     session = get_session(session_id)
+    params = session.get("params", {})
     itinerary = {
         "title": title,
         "overview": session.get("plan", ""),
-        "spot_images": {},
+        "dep_date": params.get("dep_datetime", ""),
+        "ret_date": params.get("ret_datetime", ""),
+        "budget_total": params.get("budget", ""),
+        "user_type": params.get("user_type", ""),
+        "from_city": params.get("from_city", ""),
+        "to_city": params.get("to_city", ""),
     }
     filepath = export_to_word(itinerary)
     return FileResponse(filepath, filename=os.path.basename(filepath))
