@@ -61,7 +61,7 @@ export async function fetchSpotPhoto(spotName: string, city: string): Promise<st
     });
     if (!res.ok) return "";
     const data = await res.json();
-    if (data.status === "ok" && data.url) return data.url;
+    if (data.status === "ok") return data.url || data.base64 || "";
   } catch {}
   return "";
 }
