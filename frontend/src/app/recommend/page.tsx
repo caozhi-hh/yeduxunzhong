@@ -618,7 +618,7 @@ export default function RecommendPage() {
                         >
                           <div className="h-32 bg-gradient-to-br from-emerald-100 to-teal-50 flex items-center justify-center relative">
                             {spot.imageBase64 ? (
-                              <img src={spot.imageBase64} alt={spot.name} className="w-full h-full object-cover" crossOrigin="anonymous" />
+                              <img src={spot.imageBase64} alt={spot.name} className="w-full h-full object-cover" />
                             ) : spot.imageLoading ? (
                               <div className="w-6 h-6 border-2 border-emerald-300 border-t-emerald-500 rounded-full animate-spin" />
                             ) : (

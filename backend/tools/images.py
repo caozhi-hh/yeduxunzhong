@@ -3,8 +3,7 @@ import re
 import requests
 import base64
 import os
-
-UNSPLASH_ACCESS_KEY = os.environ.get("UNSPLASH_ACCESS_KEY", "")
+from config import UNSPLASH_ACCESS_KEY
 
 _image_cache = {}
 
@@ -45,10 +44,7 @@ def generate_spot_image(spot_name: str, city: str = "") -> dict:
 
         if results:
             img_url = results[0]["urls"]["regular"]
-            img_resp = requests.get(img_url, timeout=15)
-            img_resp.raise_for_status()
-            b64 = base64.b64encode(img_resp.content).decode("utf-8")
-            result = {"status": "ok", "base64": f"data:image/jpeg;base64,{b64}"}
+            result = {"status": "ok", "url": img_url, "base64": ""}
             _image_cache[cache_key] = result
             return result
 
@@ -61,8 +57,8 @@ def generate_spot_image(spot_name: str, city: str = "") -> dict:
 
 
 def _error_result(cache_key: str) -> dict:
-    _image_cache[cache_key] = {"status": "error", "base64": ""}
-    return {"status": "error", "base64": ""}
+    _image_cache[cache_key] = {"status": "error", "url": "", "base64": ""}
+    return {"status": "error", "url": "", "base64": ""}
 
 
 def extract_spots_from_text(text: str) -> list:
