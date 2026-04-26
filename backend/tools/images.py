@@ -1,61 +1,62 @@
-# tools/images.py - 豆包 Seedream 图片生成工具
+# tools/images.py - Unsplash 景点真实照片搜索
 import re
 import requests
 import base64
-import time
-from config import ARK_API_KEY, ARK_BASE_URL, IMAGE_MODEL, IMAGE_SIZE
+import os
+
+UNSPLASH_ACCESS_KEY = os.environ.get("UNSPLASH_ACCESS_KEY", "")
 
 _image_cache = {}
 
 
 def generate_spot_image(spot_name: str, city: str = "") -> dict:
-    """用豆包 Seedream 模型生成景点图片，返回 {"status": "ok", "base64": "..."} 不保存文件。"""
+    """从 Unsplash 搜索景点真实照片，返回 base64 图片。"""
     cache_key = f"{spot_name}_{city}"
     if cache_key in _image_cache:
         return _image_cache[cache_key]
 
-    prompt = f"中国{city}{spot_name}风景名胜，蓝天白云，游客游览，高清摄影风格，宽幅风景照"
+    if not UNSPLASH_ACCESS_KEY:
+        print("[images] 未配置 UNSPLASH_ACCESS_KEY")
+        return _error_result(cache_key)
+
+    # 搜索关键词：中文景点名 + 英文关键词提高准确率
+    query = f"{city} {spot_name} travel landmark" if city else f"{spot_name} travel landmark"
 
     try:
-        url = f"{ARK_BASE_URL}/images/generations"
-        headers = {
-            "Authorization": f"Bearer {ARK_API_KEY}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": IMAGE_MODEL,
-            "prompt": prompt,
-            "size": IMAGE_SIZE,
-            "response_format": "b64_json",
-            "stream": False,
-            "watermark": True,
-        }
-        resp = requests.post(url, json=payload, headers=headers, timeout=120)
+        resp = requests.get(
+            "https://api.unsplash.com/search/photos",
+            params={"query": query, "per_page": 3, "orientation": "landscape"},
+            headers={"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"},
+            timeout=15,
+        )
         resp.raise_for_status()
-        data = resp.json()
+        results = resp.json().get("results", [])
 
-        img_data = data.get("data", [])
-        if not img_data:
-            return _error_result(cache_key)
+        if not results:
+            # 换成纯英文搜索重试
+            query2 = f"{spot_name} scenic"
+            resp2 = requests.get(
+                "https://api.unsplash.com/search/photos",
+                params={"query": query2, "per_page": 3, "orientation": "landscape"},
+                headers={"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"},
+                timeout=15,
+            )
+            results = resp2.json().get("results", [])
 
-        b64 = img_data[0].get("b64_json", "")
-        img_url = img_data[0].get("url", "")
-
-        if b64:
-            result = {"status": "ok", "base64": f"data:image/png;base64,{b64}"}
-        elif img_url:
-            img_resp = requests.get(img_url, timeout=30)
+        if results:
+            img_url = results[0]["urls"]["regular"]
+            img_resp = requests.get(img_url, timeout=15)
             img_resp.raise_for_status()
-            b64_str = base64.b64encode(img_resp.content).decode("utf-8")
-            result = {"status": "ok", "base64": f"data:image/png;base64,{b64_str}"}
-        else:
-            return _error_result(cache_key)
+            b64 = base64.b64encode(img_resp.content).decode("utf-8")
+            result = {"status": "ok", "base64": f"data:image/jpeg;base64,{b64}"}
+            _image_cache[cache_key] = result
+            return result
 
-        _image_cache[cache_key] = result
-        return result
+        print(f"[images] Unsplash 无搜索结果: {query}")
+        return _error_result(cache_key)
 
     except Exception as e:
-        print(f"[images] 生成 {spot_name} 图片失败: {e}")
+        print(f"[images] 搜索 {spot_name} 照片失败: {e}")
         return _error_result(cache_key)
 
 

@@ -21,11 +21,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 直接用 LLM 流式输出（绕过 LangGraph graph 的 tool call 问题）
+# 直接用 LLM 流式输出
 llm = ChatOpenAI(
     model=CHAT_MODEL,
-    openai_api_key=ARK_API_KEY,
-    openai_api_base=ARK_BASE_URL,
+    api_key=ARK_API_KEY,
+    base_url=ARK_BASE_URL,
     streaming=True,
 )
 
@@ -79,7 +79,7 @@ sessions = {}
 
 def get_session(session_id: str):
     if session_id not in sessions:
-        sessions[session_id] = {"messages": [], "plan": ""}
+        sessions[session_id] = {"messages": [], "plan": "", "recommendation": "", "params": {}}
     return sessions[session_id]
 
 
@@ -103,13 +103,21 @@ class ImageRequest(BaseModel):
     city: str = ""
 
 
+class ExportRequest(BaseModel):
+    plan_text: str
+    session_id: str = "default"
+
+
 def stream_llm(messages: list):
     """统一的 LLM 流式输出"""
     full_response = ""
-    for chunk in llm.stream(messages):
-        if chunk.content:
-            full_response += chunk.content
-            yield f"data: {json.dumps({'type': 'chunk', 'content': chunk.content}, ensure_ascii=False)}\n\n"
+    try:
+        for chunk in llm.stream(messages):
+            if chunk.content:
+                full_response += chunk.content
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk.content}, ensure_ascii=False)}\n\n"
+    except Exception as e:
+        yield f"data: {json.dumps({'type': 'error', 'content': str(e)}, ensure_ascii=False)}\n\n"
     return full_response
 
 
@@ -126,26 +134,16 @@ async def recommend(req: RecommendRequest):
     prompt = f"""我想从{from_city}去{to_city}旅行{params.get('days',3)}天，{dep}到达，{ret}返程。预算{params.get('budget',3000)}元，旅行类型"{params.get('travel_type','性价比出行')}"，用户类型"{params.get('user_type','成人')}"。
 交通：去程{params.get('transport_go','高铁')}，返程{params.get('transport_back','高铁')}。住宿：{params.get('accommodation','经济酒店')}。同行{params.get('companions_count',1)}人，{params.get('companion_type','独自出行')}。
 
-请推荐{to_city}的热门景点，**严格按以下顺序输出**：
+请推荐{to_city}的 6-10 个热门景点，按以下格式输出（简洁为主，不要写太多）：
 
-## 门票预约抢票日历
+---
+🏞️ **景点名**
+🎫 门票：全价XX元 / {params.get('user_type','成人')}优惠价XX元
+⏰ 游玩时长：X小时 | ⭐ 推荐指数：X/5
+📝 一句话描述
+---
 
-根据用户的出发日期（{dep}），计算每个景点的**具体抢票日期和几点几分开抢**。
-
-输出两张表：
-
-**表1：抢票时间表**
-| 景点 | 游玩日期 | 抢票日期 | 开抢时间 | 预约渠道（具体到微信小程序名/APP名） | 门票全价 | 优惠价 | 紧急程度 |
-紧急程度分三级：**已过抢票时间**（标红加粗）、**即将开抢**（加粗）、**充裕**
-如果某个景点的抢票日期已经过了，在备注栏写明替代方案。
-
-**表2：抢票实战技巧**
-针对每个需要抢票的景点，给出具体技巧：
-- 故宫：提前7天20:00放票 → 建议19:58进入小程序，提前选好日期和人数，20:00:00准时提交。身份证信息提前填好，不要犹豫。
-- 类似格式，每个景点一条技巧
-
-## 推荐景点
-推荐 6-10 个大景点，每个用 **景点名** 加粗，含门票价格（全价和{params.get('user_type','成人')}优惠价）、游玩时长、推荐指数、一句话描述，按地理位置分组。"""
+按地理位置分组排列，方便后续规划不走回头路的路线。"""
 
     messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=prompt)]
     session["messages"] = messages
@@ -154,7 +152,7 @@ async def recommend(req: RecommendRequest):
     def stream():
         full_response = yield from stream_llm(messages)
         session["messages"].append(AIMessage(content=full_response))
-        session["plan"] = full_response
+        session["recommendation"] = full_response
         spots = extract_spots_from_text(full_response)
         yield f"data: {json.dumps({'type': 'done', 'spots': spots}, ensure_ascii=False)}\n\n"
 
@@ -164,10 +162,59 @@ async def recommend(req: RecommendRequest):
 @app.post("/api/generate-plan")
 async def generate_plan(req: PlanRequest):
     session = get_session(req.session_id)
+    params = session.get("params", {})
 
-    prompt = f"我选好了，要去这些景点：{', '.join(req.spots)}。请根据这些景点帮我安排详细行程攻略。注意路线不要走回头路，并且再次确认路线是否合理。"
+    dep = params.get('dep_datetime', '')
+    ret = params.get('ret_datetime', '')
+    from_city = params.get('from_city', '')
+    to_city = params.get('to_city', '')
+    budget = params.get('budget', 3000)
+    user_type = params.get('user_type', '成人')
+    travel_type = params.get('travel_type', '性价比出行')
+    transport_go = params.get('transport_go', '高铁')
+    transport_back = params.get('transport_back', '高铁')
+    accommodation = params.get('accommodation', '经济酒店')
+    companions = params.get('companions_count', 1)
+    companion_type = params.get('companion_type', '独自出行')
 
-    # 只发系统提示 + 新请求，不带历史推荐内容（减少上下文长度）
+    prompt = f"""我选好了以下景点：{', '.join(req.spots)}
+
+请根据以下信息帮我安排详细行程攻略：
+- 出发城市：{from_city}，目的城市：{to_city}
+- 到达日期：{dep}，返程日期：{ret}
+- 预算：{budget}元/人，用户类型：{user_type}（注意在门票价格中体现优惠）
+- 交通：去程{transport_go}，返程{transport_back}
+- 住宿：{accommodation}
+- 同行：{companions}人，{companion_type}
+
+**必须包含以下内容：**
+
+1. **门票预约提醒**（放在最前面）
+针对每个需要预约的景点，写明：
+- **具体预约时间**：例如"4月24日20:00开始预约5月1日的天安门门票"
+- 预约渠道（微信小程序名/APP名）
+- 提前几天放票
+- 紧急程度
+
+2. **每日详细行程**
+- 时间精确到每 10-30 分钟
+- 交通写明具体线路（地铁几号线/公交几路/打车价格）
+- 餐饮写明具体店名+菜名+人均价格
+- 景点内部游览路线
+- 每天费用明细表
+
+3. **注意事项**（放在最后）
+- 安全提醒（贵重物品、人流密集处注意防盗）
+- 天气提醒（建议带什么衣物、雨具）
+- 当地风俗禁忌
+- 紧急联系电话（当地报警、急救、旅游投诉电话）
+- 常见骗局和避坑提醒
+- 特殊人群注意事项（如果用户类型是学生/老人/儿童，给出对应提醒）
+
+**路线核心原则：绝对不走回头路！**
+- 每天景点按地理位置单向排列
+- 同一天活动在同一区域"""
+
     messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=prompt)]
     session["messages"] = messages
 
@@ -204,13 +251,13 @@ async def generate_image(req: ImageRequest):
     return result
 
 
-@app.get("/api/export-word")
-async def export_word(session_id: str, title: str = "旅行攻略"):
-    session = get_session(session_id)
+@app.post("/api/export-word")
+async def export_word(req: ExportRequest):
+    session = get_session(req.session_id)
     params = session.get("params", {})
     itinerary = {
-        "title": title,
-        "overview": session.get("plan", ""),
+        "title": "旅行攻略",
+        "overview": req.plan_text,
         "dep_date": params.get("dep_datetime", ""),
         "ret_date": params.get("ret_datetime", ""),
         "budget_total": params.get("budget", ""),

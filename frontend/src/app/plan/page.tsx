@@ -101,7 +101,11 @@ export default function PlanPage() {
     setExporting(true);
     try {
       const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
-      const res = await fetch(`${API_BASE}/api/export-word?session_id=${sessionId}`);
+      const res = await fetch(`${API_BASE}/api/export-word`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan_text: plan, session_id: sessionId }),
+      });
       if (!res.ok) throw new Error("导出失败");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);

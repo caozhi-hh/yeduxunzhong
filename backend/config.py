@@ -1,15 +1,18 @@
-# config.py - 豆包模型配置
+# config.py - Qwen 模型配置
 import os
 
-# 火山方舟 API 配置
-ARK_API_KEY = os.environ.get("ARK_API_KEY", "ark-4d5ac002-a345-4ef8-807a-ccc4895a97fa-4b7ec")
-ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
+# 通义千问 API 配置
+ARK_API_KEY = os.environ.get("ARK_API_KEY", "sk-9e8036d16b7048fca350b07e50be0773")
+ARK_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
-# 对话模型：豆包1.8（最强，256k上下文，支持工具调用）
-CHAT_MODEL = "ep-m-20260421212710-7gf4b"
+# 对话模型：Qwen Max
+CHAT_MODEL = "qwen-max"
 
-# 图片生成模型：Seedream 4.5
-IMAGE_MODEL = "ep-m-20260423213453-2fw7b"
+# 图片生成模型：通义万相
+IMAGE_MODEL = "wanx2.1-t2i-turbo"
 
-# 图片尺寸（Seedream 4.5 用 "2K" 格式）
-IMAGE_SIZE = "2K"
+# 图片尺寸
+IMAGE_SIZE = "1280*720"
+
+# Unsplash 图片搜索（真实景点照片）
+UNSPLASH_ACCESS_KEY = os.environ.get("UNSPLASH_ACCESS_KEY", "")
