@@ -251,13 +251,10 @@ async def generate_image(req: ImageRequest):
     return result
 
 
-@app.post("/api/export-word")
-async def export_word(req: ExportRequest):
-    session = get_session(req.session_id)
-    params = session.get("params", {})
+def _build_word(params: dict, plan_text: str):
     itinerary = {
         "title": "旅行攻略",
-        "overview": req.plan_text,
+        "overview": plan_text,
         "dep_date": params.get("dep_datetime", ""),
         "ret_date": params.get("ret_datetime", ""),
         "budget_total": params.get("budget", ""),
@@ -267,6 +264,20 @@ async def export_word(req: ExportRequest):
     }
     filepath = export_to_word(itinerary)
     return FileResponse(filepath, filename=os.path.basename(filepath))
+
+
+@app.post("/api/export-word")
+async def export_word_post(req: ExportRequest):
+    session = get_session(req.session_id)
+    return _build_word(session.get("params", {}), req.plan_text)
+
+
+@app.get("/api/export-word")
+async def export_word_get(session_id: str = "default", title: str = "旅行攻略"):
+    session = get_session(session_id)
+    params = session.get("params", {})
+    plan_text = session.get("plan", "")
+    return _build_word(params, plan_text)
 
 
 if __name__ == "__main__":
