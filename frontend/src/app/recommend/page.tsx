@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { streamChat, generateImage } from "@/lib/api";
+import { streamChat, fetchSpotPhoto } from "@/lib/api";
 
 interface Spot {
   name: string;
@@ -88,8 +88,6 @@ export default function RecommendPage() {
   const [loading, setLoading] = useState(false);
   const [recommendation, setRecommendation] = useState("");
   const [spots, setSpots] = useState<Spot[]>([]);
-  const [generatingImages, setGeneratingImages] = useState(false);
-  const [imageProgress, setImageProgress] = useState(0);
 
   const days = useMemo(() => {
     try {
@@ -135,34 +133,25 @@ export default function RecommendPage() {
       (chunk) => { fullText += chunk; setRecommendation(fullText); },
       (data) => {
         const extractedSpots = (data?.spots as string[]) || [];
-        setSpots(extractedSpots.map((name) => ({ name, selected: false, imageLoading: false, imageBase64: "" })));
+        const spotList = extractedSpots.map((name) => ({ name, selected: false, imageLoading: true, imageBase64: "" }));
+        setSpots(spotList);
         setLoading(false);
+        // 自动加载每个景点的照片
+        spotList.forEach((spot, idx) => {
+          fetchSpotPhoto(spot.name, toCity).then((url) => {
+            if (url) {
+              setSpots((prev) => prev.map((s, i) => i === idx ? { ...s, imageLoading: false, imageBase64: url } : s));
+            } else {
+              setSpots((prev) => prev.map((s, i) => i === idx ? { ...s, imageLoading: false } : s));
+            }
+          });
+        });
       },
     );
   };
 
   const toggleSpot = (idx: number) => {
     setSpots((prev) => prev.map((s, i) => (i === idx ? { ...s, selected: !s.selected } : s)));
-  };
-
-  const generateImages = async () => {
-    const selected = spots.filter((s) => s.selected);
-    if (selected.length === 0) return;
-    setGeneratingImages(true);
-    let done = 0;
-    const total = selected.length;
-    for (const spot of selected) {
-      setSpots((prev) => prev.map((s) => (s.name === spot.name ? { ...s, imageLoading: true } : s)));
-      const res = await generateImage(spot.name, toCity);
-      if (res.status === "ok" && res.base64) {
-        setSpots((prev) => prev.map((s) => (s.name === spot.name ? { ...s, imageLoading: false, imageBase64: res.base64 } : s)));
-      } else {
-        setSpots((prev) => prev.map((s) => (s.name === spot.name ? { ...s, imageLoading: false } : s)));
-      }
-      done++;
-      setImageProgress(done / total);
-    }
-    setGeneratingImages(false);
   };
 
   const handleConfirm = () => {
@@ -629,7 +618,9 @@ export default function RecommendPage() {
                         >
                           <div className="h-32 bg-gradient-to-br from-emerald-100 to-teal-50 flex items-center justify-center relative">
                             {spot.imageBase64 ? (
-                              <img src={spot.imageBase64} alt={spot.name} className="w-full h-full object-cover" />
+                              <img src={spot.imageBase64} alt={spot.name} className="w-full h-full object-cover" crossOrigin="anonymous" />
+                            ) : spot.imageLoading ? (
+                              <div className="w-6 h-6 border-2 border-emerald-300 border-t-emerald-500 rounded-full animate-spin" />
                             ) : (
                               <span className="text-4xl">🏞️</span>
                             )}
@@ -668,24 +659,13 @@ export default function RecommendPage() {
                       <span className="text-gray-600 text-sm">
                         已选 <strong className="text-emerald-600 text-lg">{selectedCount}</strong> 个景点
                       </span>
-                      <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
-                        <button
-                          onClick={generateImages}
-                          disabled={generatingImages || selectedCount === 0}
-                          className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl border-2 border-emerald-500 text-emerald-600 text-sm font-medium hover:bg-emerald-50 disabled:opacity-40 transition-all"
-                        >
-                          {generatingImages
-                            ? `🎨 ${Math.round(imageProgress * 100)}%`
-                            : "🎨 图片"}
-                        </button>
-                        <button
-                          onClick={handleConfirm}
-                          disabled={selectedCount === 0}
-                          className="flex-1 sm:flex-none px-6 sm:px-8 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:from-gray-300 disabled:to-gray-300 text-white text-sm font-bold transition-all shadow-lg shadow-emerald-200/50 disabled:shadow-none"
-                        >
-                          ✅ 生成攻略
-                        </button>
-                      </div>
+                      <button
+                        onClick={handleConfirm}
+                        disabled={selectedCount === 0}
+                        className="px-6 sm:px-8 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:from-gray-300 disabled:to-gray-300 text-white text-sm font-bold transition-all shadow-lg shadow-emerald-200/50 disabled:shadow-none"
+                      >
+                        ✅ 生成攻略
+                      </button>
                     </motion.div>
                   </>
                 )}

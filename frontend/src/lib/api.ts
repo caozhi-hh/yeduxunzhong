@@ -52,11 +52,19 @@ export async function streamChat(
   if (!receivedDone) onDone();
 }
 
-export async function generateImage(spotName: string, city: string) {
-  const res = await fetch(`${API_BASE}/api/generate-image`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ spot_name: spotName, city }),
-  });
-  return res.json();
+const UNSPLASH_KEY = process.env.NEXT_PUBLIC_UNSPLASH_KEY || "";
+
+export async function fetchSpotPhoto(spotName: string, city: string): Promise<string> {
+  const query = city ? `${city} ${spotName} travel` : `${spotName} travel landmark`;
+  try {
+    const res = await fetch(
+      `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=1&orientation=landscape`,
+      { headers: { Authorization: `Client-ID ${UNSPLASH_KEY}` } },
+    );
+    if (!res.ok) return "";
+    const data = await res.json();
+    const results = data.results || [];
+    if (results.length > 0) return results[0].urls.regular;
+  } catch {}
+  return "";
 }
