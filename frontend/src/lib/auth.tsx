@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE != null ? process.env.NEXT_PUBLIC_API_BASE : "http://localhost:8000";
 const TOKEN_KEY = "yedu_auth_token";
 
 interface User {

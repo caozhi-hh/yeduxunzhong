@@ -4,8 +4,7 @@ emoji: 🌿
 colorFrom: green
 colorTo: green
 sdk: docker
-app_port: 8501
-app_file: app.py
+app_port: 7860
 pinned: false
 license: mit
 ---
@@ -20,3 +19,5 @@ license: mit
 - 🗺️ 智能路线规划，不走回头路
 - 📄 一键导出 Word 攻略
 - 💰 支持学生/老人/军人票价优惠
+- 👤 用户登录 + 历史攻略管理
+- 🌐 中英文多语言支持
