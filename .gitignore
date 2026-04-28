@@ -7,5 +7,7 @@ node_modules/
 .next/
 frontend/node_modules/
 frontend/.next/
+frontend/out/
 backend/__pycache__/
 backend/tools/__pycache__/
+backend/data/

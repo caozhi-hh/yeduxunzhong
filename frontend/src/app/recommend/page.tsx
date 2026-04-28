@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { streamChat, fetchSpotPhoto } from "@/lib/api";
+import UserNav from "@/components/UserNav";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { useAuth } from "@/lib/auth";
 
 interface Spot {
   name: string;
@@ -69,6 +72,7 @@ const STEPS = [
 
 export default function RecommendPage() {
   const router = useRouter();
+  const { isAuthenticated, loading: authLoading } = useAuth();
 
   const [fromCity, setFromCity] = useState("苏州");
   const [toCity, setToCity] = useState("");
@@ -82,6 +86,8 @@ export default function RecommendPage() {
   const [hotel, setHotel] = useState(hotelOptions[1]);
   const [companions, setCompanions] = useState(1);
   const [companionType, setCompanionType] = useState(companionTypes[0]);
+
+  const [imageProgress, setImageProgress] = useState({ loaded: 0, total: 0 });
 
   const [step, setStep] = useState(1);
   const [direction, setDirection] = useState(1);
@@ -133,12 +139,19 @@ export default function RecommendPage() {
       (chunk) => { fullText += chunk; setRecommendation(fullText); },
       (data) => {
         const extractedSpots = (data?.spots as string[]) || [];
+        const coords = (data?.coords as { name: string; lng: number; lat: number }[]) || [];
         const spotList = extractedSpots.map((name) => ({ name, selected: false, imageLoading: true, imageBase64: "" }));
         setSpots(spotList);
+        setImageProgress({ loaded: 0, total: spotList.length });
         setLoading(false);
+        // 保存坐标到 localStorage 供地图使用
+        if (coords.length > 0) {
+          localStorage.setItem("yedu_spot_coords", JSON.stringify(coords));
+        }
         // 自动加载每个景点的照片
         spotList.forEach((spot, idx) => {
           fetchSpotPhoto(spot.name, toCity).then((url) => {
+            setImageProgress((prev) => ({ ...prev, loaded: prev.loaded + 1 }));
             if (url) {
               setSpots((prev) => prev.map((s, i) => i === idx ? { ...s, imageLoading: false, imageBase64: url } : s));
             } else {
@@ -157,8 +170,16 @@ export default function RecommendPage() {
   const handleConfirm = () => {
     const selected = spots.filter((s) => s.selected).map((s) => s.name);
     if (selected.length === 0) return;
-    sessionStorage.setItem("selected_spots", JSON.stringify(selected));
-    sessionStorage.setItem("plan_session", "s1");
+    localStorage.setItem("yedu_selected_spots", JSON.stringify(selected));
+    localStorage.setItem("yedu_session_id", "s1");
+    localStorage.setItem("yedu_to_city", toCity);
+    localStorage.setItem("yedu_user_params", JSON.stringify({
+      from_city: fromCity, to_city: toCity, days, budget,
+      travel_type: travelType, user_type: userType,
+      dep_date: depDate, ret_date: retDate,
+      transport_go: transportGo, transport_back: transportBack,
+      accommodation: hotel, companions, companion_type: companionType,
+    }));
     router.push("/plan");
   };
 
@@ -170,6 +191,12 @@ export default function RecommendPage() {
     return `${dt.getFullYear()}年${dt.getMonth() + 1}月${dt.getDate()}日${dt.getHours()}点`;
   };
 
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) router.replace("/login");
+  }, [isAuthenticated, authLoading]);
+
+  if (authLoading || !isAuthenticated) return null;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-emerald-50 flex flex-col relative overflow-hidden">
       {/* 背景装饰 */}
@@ -180,6 +207,7 @@ export default function RecommendPage() {
       {/* 顶部步骤条 */}
       <nav className="sticky top-0 z-20 bg-white/70 backdrop-blur-xl border-b border-gray-100/50 px-3 sm:px-6 py-3 sm:py-4">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-1">
           {STEPS.map((s, i) => (
             <div key={s.num} className="flex items-center">
               <button
@@ -212,6 +240,9 @@ export default function RecommendPage() {
               )}
             </div>
           ))}
+          </div>
+          <LanguageSwitcher />
+          <UserNav />
         </div>
       </nav>
 
@@ -601,6 +632,24 @@ export default function RecommendPage() {
                 {spots.length > 0 && (
                   <>
                     <h3 className="text-sm font-bold text-emerald-700 mb-3">✅ 勾选你想去的景点</h3>
+
+                    {/* 图片加载进度 */}
+                    {imageProgress.loaded < imageProgress.total && (
+                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-4 bg-white rounded-xl p-3 border border-emerald-100 shadow-sm">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs text-gray-500">📸 正在加载景点图片...</span>
+                          <span className="text-xs text-emerald-600 font-medium">{imageProgress.loaded}/{imageProgress.total}</span>
+                        </div>
+                        <div className="w-full bg-emerald-100 rounded-full h-2 overflow-hidden">
+                          <motion.div
+                            className="h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(imageProgress.loaded / Math.max(imageProgress.total, 1)) * 100}%` }}
+                            transition={{ duration: 0.3 }}
+                          />
+                        </div>
+                      </motion.div>
+                    )}
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
                       {spots.map((spot, idx) => (
                         <motion.div

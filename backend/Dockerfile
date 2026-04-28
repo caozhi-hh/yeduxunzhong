@@ -9,7 +9,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 复制后端代码
 COPY . .
 
-# 暴露端口
+# 创建数据目录（SQLite 数据库 + sessions）
+RUN mkdir -p /app/data/sessions
+
+# 暴露端口（HF Spaces 要求 7860）
 EXPOSE 7860
 
 # 启动

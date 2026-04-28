@@ -18,8 +18,8 @@ def generate_spot_image(spot_name: str, city: str = "") -> dict:
         print("[images] 未配置 UNSPLASH_ACCESS_KEY")
         return _error_result(cache_key)
 
-    # 搜索关键词：中文景点名 + 英文关键词提高准确率
-    query = f"{city} {spot_name} travel landmark" if city else f"{spot_name} travel landmark"
+    # 搜索关键词：去掉 "travel landmark" 噪声词，提高中文景点匹配率
+    query = f"{spot_name} {city}" if city else spot_name
 
     try:
         resp = requests.get(
@@ -32,8 +32,8 @@ def generate_spot_image(spot_name: str, city: str = "") -> dict:
         results = resp.json().get("results", [])
 
         if not results:
-            # 换成纯英文搜索重试
-            query2 = f"{spot_name} scenic"
+            # 中文搜不到，用英文关键词兜底
+            query2 = f"{spot_name} China"
             resp2 = requests.get(
                 "https://api.unsplash.com/search/photos",
                 params={"query": query2, "per_page": 3, "orientation": "landscape"},
@@ -93,3 +93,42 @@ def extract_spots_from_text(text: str) -> list:
                 seen.add(name)
 
     return spots[:12]
+
+
+def geocode_spots(spots: list, city: str) -> list:
+    """用 LLM 生成景点的大致经纬度坐标。"""
+    if not spots:
+        return []
+
+    try:
+        from config import ARK_API_KEY, ARK_BASE_URL, CHAT_MODEL
+        from langchain_openai import ChatOpenAI
+        import json
+
+        geo_llm = ChatOpenAI(
+            model=CHAT_MODEL, api_key=ARK_API_KEY, base_url=ARK_BASE_URL, streaming=False,
+        )
+
+        spot_list = "、".join(spots)
+        prompt = f"""请给出{city}以下景点的大致经纬度坐标（GCJ-02坐标系，用于高德地图）。
+只返回JSON数组，不要其他内容。格式：
+[{{"name":"景点名","lng":120.xxx,"lat":30.xxx}}]
+
+景点：{spot_list}"""
+
+        resp = geo_llm.invoke(prompt)
+        text = resp.content.strip()
+        # 提取 JSON 部分
+        if "```" in text:
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        start = text.find("[")
+        end = text.rfind("]") + 1
+        if start >= 0 and end > start:
+            result = json.loads(text[start:end])
+            return [{"name": r["name"], "lng": float(r["lng"]), "lat": float(r["lat"])} for r in result if "lng" in r and "lat" in r]
+    except Exception as e:
+        print(f"[geocode_spots] LLM 地理编码失败: {e}")
+
+    return []

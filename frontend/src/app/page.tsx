@@ -1,24 +1,55 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
-
-const features = [
-  { icon: "🎯", title: "AI 智能推荐", desc: "根据你的预算和风格\n精准推荐必去景点" },
-  { icon: "🎨", title: "AI 生成景点图", desc: "每个景点自动生成\n沉浸式预览图片" },
-  { icon: "🗺️", title: "智能路线规划", desc: "不走回头路\n每天行程最优安排" },
-  { icon: "📄", title: "一键导出攻略", desc: "详细攻略导出 Word\n离线也能随时查看" },
-];
-
-const steps = [
-  { num: 1, text: "填写旅行参数" },
-  { num: 2, text: "勾选心仪景点" },
-  { num: 3, text: "获取详细攻略" },
-];
+import { useTranslation } from "react-i18next";
+import { useAuth } from "@/lib/auth";
+import UserNav from "@/components/UserNav";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 export default function Home() {
+  const router = useRouter();
+  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { t } = useTranslation();
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.replace("/login");
+    }
+  }, [isAuthenticated, authLoading]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-emerald-900">
+        <div className="w-10 h-10 border-4 border-emerald-300/30 border-t-emerald-400 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) return null;
+
+  const features = [
+    { icon: "🎯", title: t("home.feature1_title"), desc: t("home.feature1_desc") },
+    { icon: "🎨", title: t("home.feature2_title"), desc: t("home.feature2_desc") },
+    { icon: "🗺️", title: t("home.feature3_title"), desc: t("home.feature3_desc") },
+    { icon: "📄", title: t("home.feature4_title"), desc: t("home.feature4_desc") },
+  ];
+
+  const steps = [
+    { num: 1, text: t("home.step1") },
+    { num: 2, text: t("home.step2") },
+    { num: 3, text: t("home.step3") },
+  ];
+
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden">
+      {/* 顶栏 */}
+      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-end gap-2 p-4">
+        <LanguageSwitcher />
+        <UserNav />
+      </div>
       {/* 背景图层 */}
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
@@ -40,10 +71,10 @@ export default function Home() {
           className="text-center mb-14"
         >
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold text-white mb-4 drop-shadow-lg tracking-wide">
-            🌿 野渡寻踪
+            {t("home.title")}
           </h1>
           <p className="text-base sm:text-xl text-emerald-200 max-w-2xl mx-auto leading-relaxed drop-shadow">
-            AI 智能旅行攻略规划师 — 从景点推荐到详细行程，一站搞定
+            {t("home.subtitle")}
           </p>
         </motion.div>
 
@@ -98,12 +129,12 @@ export default function Home() {
             href="/recommend"
             className="inline-block bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-lg sm:text-xl px-8 sm:px-14 py-4 sm:py-5 rounded-full shadow-2xl shadow-emerald-500/30 hover:shadow-emerald-400/40 transition-all hover:-translate-y-1"
           >
-            🚀 开始生成攻略
+            {t("home.cta")}
           </Link>
         </motion.div>
 
         {/* 底部 */}
-        <p className="mt-20 text-xs text-white/40">Powered by LangGraph + 豆包</p>
+        <p className="mt-20 text-xs text-white/40">{t("home.poweredBy")}</p>
       </div>
     </div>
   );
