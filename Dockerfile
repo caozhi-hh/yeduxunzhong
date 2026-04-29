@@ -1,15 +1,23 @@
+# ---- Stage 1: 构建前端 ----
+FROM node:20-slim AS frontend-builder
+WORKDIR /build
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ .
+RUN npm run build
+
+# ---- Stage 2: 后端 ----
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# 安装依赖
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制后端代码
 COPY backend/ .
 
-# 创建数据目录
+COPY --from=frontend-builder /build/out ./static
+
 RUN mkdir -p /app/data/sessions
 
 EXPOSE 7860

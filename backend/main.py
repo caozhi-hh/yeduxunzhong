@@ -1,7 +1,7 @@
 # backend/main.py - FastAPI 后端
 from fastapi import FastAPI, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
@@ -546,6 +546,22 @@ async def api_delete_history(plan_id: int, user_id: int = Depends(get_current_us
         return {"status": "error", "message": "删除失败"}
     return {"status": "ok"}
 
+
+
+# ==================== Serve 前端静态文件 ====================
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+if os.path.isdir(STATIC_DIR):
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        if full_path:
+            file_path = os.path.join(STATIC_DIR, full_path)
+            if os.path.isfile(file_path):
+                return FileResponse(file_path)
+        index = os.path.join(STATIC_DIR, "index.html")
+        if os.path.isfile(index):
+            return FileResponse(index)
+        return HTMLResponse("<h1>野渡寻踪</h1>", status_code=200)
 
 
 if __name__ == "__main__":
