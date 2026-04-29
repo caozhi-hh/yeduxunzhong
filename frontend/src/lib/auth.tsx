@@ -14,8 +14,6 @@ const TOKEN_KEY = "yedu_auth_token";
 
 interface User {
   id: string;
-  phone?: string;
-  email?: string;
   nickname: string;
   [key: string]: unknown;
 }
@@ -25,16 +23,9 @@ interface AuthContextValue {
   token: string | null;
   isAuthenticated: boolean;
   loading: boolean;
-  login: (phoneOrEmail: string, password: string) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
+  register: (data: { username: string; password: string }) => Promise<void>;
   logout: () => void;
-}
-
-export interface RegisterData {
-  nickname: string;
-  phone: string;
-  email: string;
-  password: string;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -44,7 +35,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Validate stored token on mount
   useEffect(() => {
     const stored = localStorage.getItem(TOKEN_KEY);
     if (!stored) {
@@ -71,44 +61,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = useCallback(async (phoneOrEmail: string, password: string) => {
-    const isEmail = phoneOrEmail.includes("@");
-    const body: Record<string, string> = { password };
-    if (isEmail) body.email = phoneOrEmail;
-    else body.phone = phoneOrEmail;
-
+  const login = useCallback(async (username: string, password: string) => {
     const res = await fetch(`${API_BASE}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ username, password }),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || err.message || "登录失败");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.status === "error") {
+      throw new Error(data.message || data.detail || "登录失败");
     }
-    const data = await res.json();
-    const t = data.token ?? data.access_token;
+    const t = data.token;
     localStorage.setItem(TOKEN_KEY, t);
     setToken(t);
-    setUser(data.user ?? data);
+    setUser({ id: String(data.user_id), nickname: data.nickname });
   }, []);
 
-  const register = useCallback(async (data: RegisterData) => {
+  const register = useCallback(async (req: { username: string; password: string }) => {
     const res = await fetch(`${API_BASE}/api/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify(req),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || err.message || "注册失败");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.status === "error") {
+      throw new Error(data.message || data.detail || "注册失败");
     }
-    const regData = await res.json();
-    const t = regData.token;
+    const t = data.token;
     if (t) {
       localStorage.setItem(TOKEN_KEY, t);
       setToken(t);
-      setUser({ id: String(regData.user_id), nickname: regData.nickname });
+      setUser({ id: String(data.user_id), nickname: data.nickname });
     }
   }, []);
 
@@ -120,15 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{
-        user,
-        token,
-        isAuthenticated: !!user,
-        loading,
-        login,
-        register,
-        logout,
-      }}
+      value={{ user, token, isAuthenticated: !!user, loading, login, register, logout }}
     >
       {children}
     </AuthContext.Provider>

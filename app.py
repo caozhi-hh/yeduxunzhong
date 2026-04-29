@@ -1,9 +1,9 @@
 # app.py - 野渡寻踪 Streamlit 前端
 import streamlit as st
-from agent import app as langgraph_app, PlannerState
+from agent import app as langgraph_app, PlannerState, SYSTEM_PROMPT
 from tools.export import export_to_word
 from tools.images import generate_spot_image, extract_spots_from_text
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 import json
 import os
 import re
@@ -540,10 +540,8 @@ if st.session_state.phase == "recommend" and st.session_state.user_params and no
         with st.spinner("🌿 AI 正在推荐景点..."):
             config = {"configurable": {"thread_id": st.session_state.thread_id}}
             state_input = {
-                "messages": [HumanMessage(content=prompt)],
+                "messages": [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=prompt)],
                 "user_input": st.session_state.user_params,
-                "phase": "recommend",
-                "plan": "",
             }
 
             full_response = ""
@@ -645,8 +643,6 @@ if st.session_state.phase == "plan":
             state_input = {
                 "messages": st.session_state.messages,
                 "user_input": st.session_state.user_params,
-                "phase": st.session_state.phase,
-                "plan": st.session_state.current_plan,
             }
 
             full_response = ""
@@ -689,8 +685,6 @@ if st.session_state.phase in ("modify", "done"):
                                 state_input = {
                                     "messages": st.session_state.messages,
                                     "user_input": st.session_state.user_params,
-                                    "phase": st.session_state.phase,
-                                    "plan": st.session_state.current_plan,
                                 }
 
                                 full_response = ""
@@ -721,8 +715,6 @@ if st.session_state.phase in ("modify", "done"):
                 state_input = {
                     "messages": st.session_state.messages,
                     "user_input": st.session_state.user_params,
-                    "phase": st.session_state.phase,
-                    "plan": st.session_state.current_plan,
                 }
 
                 full_response = ""

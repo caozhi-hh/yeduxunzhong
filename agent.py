@@ -7,6 +7,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import MemorySaver
 import json
+import requests
 import os
 from config import ARK_API_KEY, ARK_BASE_URL, CHAT_MODEL
 
@@ -18,37 +19,53 @@ llm = ChatOpenAI(
 )
 
 # ==================== 2. 定义工具 ====================
-@tool
-def generate_attractions(city: str, travel_type: str) -> str:
-    """根据城市和旅行类型推荐热门景点，包含门票价格、游玩时长、推荐指数。"""
-    return f"请推荐{city}的热门景点，旅行类型：{travel_type}"
 
 @tool
-def generate_itinerary(
-    city: str,
-    days: int,
-    budget: int,
-    travel_type: str,
-    selected_spots: str,
-    from_city: str = ""
-) -> str:
-    """根据用户选择的景点和参数生成完整行程攻略。"""
-    return f"生成{city}的{days}日行程，预算{budget}元，类型{travel_type}，必去景点：{selected_spots}"
+def get_weather(city: str) -> str:
+    """查询目的地未来3天天气预报，用于给出穿衣建议和雨天备选方案。
 
-@tool
-def modify_itinerary(modification_request: str, current_plan: str) -> str:
-    """根据用户反馈修改行程安排。"""
-    return f"修改请求：{modification_request}，当前行程：{current_plan[:500]}"
+    当用户提到旅行目的地时，主动调用此工具获取天气信息，
+    以便在攻略中加入穿衣建议、雨天备选方案等实用信息。
 
-tools = [generate_attractions, generate_itinerary, modify_itinerary]
+    Args:
+        city: 中文城市名，如"北京"、"成都"、"西安"
+    """
+    try:
+        url = f"https://wttr.in/{city}?format=j1&lang=zh"
+        resp = requests.get(url, timeout=8)
+        resp.raise_for_status()
+        data = resp.json()
+
+        days = data.get("weather", [])
+        lines = []
+        for day in days:
+            date = day.get("date", "")
+            hourly = day.get("hourly", [])
+            # 取中午时段（index 4 ≈ 12:00）作为代表
+            mid = hourly[4] if len(hourly) > 4 else (hourly[0] if hourly else {})
+            max_temp = day.get("maxtempC", "?")
+            min_temp = day.get("mintempC", "?")
+            desc = mid.get("lang_zh", [{}])[0].get("value",
+                    mid.get("weatherDesc", [{}])[0].get("value", "?"))
+            wind = mid.get("windspeedKmph", "?")
+            humidity = mid.get("humidity", "?")
+            lines.append(
+                f"{date}: {desc}, {min_temp}~{max_temp}°C, "
+                f"风速{wind}km/h, 湿度{humidity}%"
+            )
+
+        return f"📍 {city}未来天气：\n" + "\n".join(lines)
+    except Exception as e:
+        return f"天气查询失败（{e}），请根据季节和常识给出穿衣建议。"
+
+
+tools = [get_weather]
 llm_with_tools = llm.bind_tools(tools)
 
 # ==================== 3. 定义 State ====================
 class PlannerState(TypedDict):
     messages: Annotated[list, add_messages]  # add_messages = 追加模式，保护历史消息
     user_input: dict   # 用户参数（城市、天数、预算等）
-    phase: str         # 当前阶段：recommend / plan / modify / done
-    plan: str          # 当前攻略内容
 
 # ==================== 4. 定义节点 ====================
 SYSTEM_PROMPT = """你是"野渡寻踪"的 AI 助手，专门为预算有限的旅行者生成个性化攻略。
@@ -63,6 +80,13 @@ SYSTEM_PROMPT = """你是"野渡寻踪"的 AI 助手，专门为预算有限的�
 - 儿童(1.2m以下)：景区免票，火车免票（不占座）
 - 成人：无特殊优惠，按全价计算
 在推荐景点时，门票价格要同时标注"全价"和"优惠价"。
+
+**天气查询**
+在推荐景点或生成攻略时，你应该主动调用 get_weather 工具查询目的地天气。
+拿到天气数据后，在攻略中加入：
+- 穿衣建议（根据温度和天气状况）
+- 雨天备选方案（如果有雨）
+- 户外/室内活动建议
 
 **第 1 步：收集基本信息**
 用户第一次提问时，你已经有出发城市、目的地、天数、预算、旅行类型、用户类型、出发日期、返程日期。
@@ -250,12 +274,18 @@ SYSTEM_PROMPT = """你是"野渡寻踪"的 AI 助手，专门为预算有限的�
 8. **路线绝不走回头路**：每天景点按地理位置单向串联，同一天的活动在同区域，住宿在当天终点和明天起点之间
 
 **第 5 步：修改调整**
-根据用户反馈调整，支持：
-- "太累了/太赶了"→减少每天景点数，增加休息时间
+根据用户反馈调整。⚠️ 重要规则：只输出修改的部分，不要重新生成未修改的天或内容！
+- 如果用户只要求改 Day 2，就只输出 Day 2 的完整内容
+- 用 ## 📅 Day X 标题明确标明修改的是哪天
+- 未被要求修改的天不要重新输出
+- 只有用户明确说"重新生成完整攻略"时才输出全部内容
+
+支持的修改类型：
+- "太累了/太赶了"→减少某天景点数，增加休息时间
 - "预算超了"→降低住宿/餐饮标准，替换收费景点为免费景点
-- "加个景点"→插入并重新优化路线
+- "加个景点"→插入并优化相关天的路线
 - "换天"→调整某天的安排
-- "某天天气不好"→调整室内外活动比例
+- "某天天气不好"→调整那天的室内外活动比例
 
 预算分配参考：
 - 特种兵旅行：交通30% 住宿20% 餐饮15% 门票30% 其他5%（硬座/夜车、青旅、免费景点优先）
@@ -285,39 +315,45 @@ SYSTEM_PROMPT = """你是"野渡寻踪"的 AI 助手，专门为预算有限的�
 5. 在攻略最后加一段「✅ 路线检查」，简要说明为什么这样安排是合理的（如"Day1-3从北到南，Day4在市中心，不走回头路"）"""
 
 def supervisor_node(state: PlannerState) -> dict:
-    """主管节点：根据当前阶段决定下一步"""
-    messages = [SystemMessage(content=SYSTEM_PROMPT)]
+    """主管节点：调用 LLM 处理对话。
 
-    # 添加历史消息
-    for msg in state["messages"]:
-        messages.append(msg)
-
-    # 附加当前阶段和攻略信息
-    phase = state.get("phase", "recommend")
-    plan = state.get("plan", "")
+    不再每次重新构造 [SystemMessage(SYSTEM_PROMPT)] + history。
+    System Prompt 由 app.py 在首次调用时注入 messages 列表，
+    add_messages reducer 会保留历史，后续轮次自动携带，不会重复。
+    """
     user_input = state.get("user_input", {})
+    context = f"用户参数：{json.dumps(user_input, ensure_ascii=False)}"
 
-    context = f"\n当前阶段：{phase}\n用户参数：{json.dumps(user_input, ensure_ascii=False)}"
-    if plan:
-        context += f"\n当前攻略摘要：{plan[:500]}"
-    messages.append(SystemMessage(content=context))
-
-    response = llm_with_tools.invoke(messages)
+    response = llm_with_tools.invoke(
+        state["messages"] + [SystemMessage(content=context)]
+    )
     return {"messages": [response]}
 
 def tool_node(state: PlannerState) -> dict:
-    """工具执行节点"""
+    """工具执行节点：真正执行 LLM 选择的工具。
+
+    LangGraph 模式：接收 AIMessage（含 tool_calls），
+    执行每个工具，返回 ToolMessage。图会路由回 supervisor。
+    """
     last_message = state["messages"][-1]
+    tool_map = {t.name: t for t in tools}
     tool_messages = []
+
     for tool_call in last_message.tool_calls:
         tool_name = tool_call["name"]
         tool_args = tool_call["args"]
 
-        # 执行工具（这里工具主要是提示 AI 生成对应内容）
-        result = f"已调用 {tool_name}，参数：{json.dumps(tool_args, ensure_ascii=False)}"
+        fn = tool_map.get(tool_name)
+        if fn:
+            try:
+                result = str(fn.invoke(tool_args))
+            except Exception as e:
+                result = f"工具 {tool_name} 执行出错：{e}"
+        else:
+            result = f"未知工具：{tool_name}"
 
         tool_messages.append(ToolMessage(
-            content=str(result),
+            content=result,
             tool_call_id=tool_call["id"]
         ))
     return {"messages": tool_messages}

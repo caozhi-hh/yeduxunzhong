@@ -52,63 +52,50 @@ async def optional_user(authorization: str = Header(None)) -> int:
 # ==================== Auth 端点 ====================
 
 class RegisterRequest(BaseModel):
-    phone: str = ""
-    email: str = ""
+    username: str
     password: str
-    nickname: str = ""
 
 
 class LoginRequest(BaseModel):
-    phone: str = ""
-    email: str = ""
+    username: str
     password: str
 
 
 @app.post("/api/auth/register")
 async def register(req: RegisterRequest):
-    if not req.phone and not req.email:
-        return {"status": "error", "message": "请提供手机号或邮箱"}
+    username = req.username.strip()
+    if not username:
+        return {"status": "error", "message": "请输入用户名"}
     if len(req.password) < 6:
         return {"status": "error", "message": "密码至少6位"}
 
     db = await get_db()
     try:
-        # 检查唯一性
-        if req.phone:
-            row = await db.execute_fetchall("SELECT id FROM users WHERE phone=?", (req.phone,))
-            if row:
-                return {"status": "error", "message": "手机号已注册"}
-        if req.email:
-            row = await db.execute_fetchall("SELECT id FROM users WHERE email=?", (req.email,))
-            if row:
-                return {"status": "error", "message": "邮箱已注册"}
+        row = await db.execute_fetchall("SELECT id FROM users WHERE nickname=?", (username,))
+        if row:
+            return {"status": "error", "message": "用户名已存在"}
 
         pw_hash = hash_password(req.password)
         cursor = await db.execute(
-            "INSERT INTO users (phone, email, password_hash, nickname) VALUES (?, ?, ?, ?)",
-            (req.phone or None, req.email or None, pw_hash, req.nickname or req.phone or req.email),
+            "INSERT INTO users (password_hash, nickname) VALUES (?, ?)",
+            (pw_hash, username),
         )
         await db.commit()
         user_id = cursor.lastrowid
         token = create_token(user_id)
-        return {"status": "ok", "user_id": user_id, "token": token, "nickname": req.nickname or req.phone or req.email}
+        return {"status": "ok", "user_id": user_id, "token": token, "nickname": username}
     finally:
         await db.close()
 
 
 @app.post("/api/auth/login")
 async def login(req: LoginRequest):
+    username = req.username.strip()
     db = await get_db()
     try:
-        if req.phone:
-            row = await db.execute_fetchall("SELECT id, password_hash, nickname FROM users WHERE phone=?", (req.phone,))
-        elif req.email:
-            row = await db.execute_fetchall("SELECT id, password_hash, nickname FROM users WHERE email=?", (req.email,))
-        else:
-            return {"status": "error", "message": "请提供手机号或邮箱"}
-
+        row = await db.execute_fetchall("SELECT id, password_hash, nickname FROM users WHERE nickname=?", (username,))
         if not row:
-            return {"status": "error", "message": "账号不存在"}
+            return {"status": "error", "message": "用户名不存在"}
 
         user = dict(row[0])
         if not verify_password(req.password, user["password_hash"]):

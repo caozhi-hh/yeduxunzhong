@@ -144,16 +144,23 @@
 #
 # POST /api/generate-plan   → 生成详细攻略（SSE 流式）
 #   请求：{ session_id, spots: ["景点1", "景点2"] }
+#   说明：从 session["params"] 读取用户参数（预算、身份、交通等）
 #
 # POST /api/modify          → 修改攻略（SSE 流式）
 #   请求：{ session_id, message: "太累了，减少景点" }
 #
-# POST /api/generate-image  → 生成景点图片
+# POST /api/generate-image  → 搜索景点真实照片（Unsplash API）
 #   请求：{ spot_name, city }
-#   响应：{ status: "ok", base64: "data:image/png;base64,..." }
+#   响应：{ status: "ok", "base64": "data:image/jpeg;base64,..." }
+#   说明：从 Unsplash 搜索真实景点照片，key 在 config.py 配置
 #
-# GET  /api/export-word     → 导出 Word 文档
+# POST /api/export-word     → 导出 Word 文档（推荐）
+#   请求：{ plan_text: "完整攻略文本", session_id }
+#   说明：前端直接传攻略内容，不依赖后端 session
+#
+# GET  /api/export-word     → 导出 Word 文档（兼容旧版）
 #   参数：session_id, title
+#   说明：从 session["plan"] 读取，HF Spaces 重启后可能为空
 
 # ============================================
 # 六、学到的经验
@@ -168,6 +175,15 @@
 # 8. 前后端分离部署时注意 CORS 配置（allow_origins=["*"]）
 # 9. yield from 可以把子生成器的值传递给外层生成器
 # 10. 预约抢票提醒需要根据出发日期计算具体抢票日期和时间
+# 11. HF Spaces 有请求超时，prompt 太长会导致 SSE 连接中途断开
+# 12. 前端 SSE 必须处理连接中断：done=true 但没有收到 "done" 消息时也要停止 loading
+# 13. session 存在内存里，HF Spaces 重启后丢失 → Word 导出应该让前端传内容
+# 14. Unsplash API 免费 50 次/小时，搜索真实景点照片比 AI 生成更靠谱
+# 15. .env.production 被 gitignore 会导致 Cloudflare 构建时缺少环境变量
+# 16. images.py 要从 config.py 导入 key，不要自己 os.environ.get（会拿不到默认值）
+# 17. wanx（通义万相）图片生成的 OpenAI 兼容端点返回 404，不可用
+# 18. API 接口改 POST 后要保留 GET 兼容，防止前后端部署不同步
+# 19. 推荐阶段只做景点推荐，门票预约日历等长内容放到攻略生成阶段
 
 
 # ============================================
