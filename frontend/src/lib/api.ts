@@ -10,6 +10,51 @@ function getAuthHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/** XSS 防护：转义 HTML 特殊字符 */
+function sanitize(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
+
+/** 统一错误类 */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number = 500) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/** 统一 JSON 请求封装 */
+async function request<T>(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const res = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...options.headers,
+    },
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok || data.status === "error") {
+    throw new ApiError(
+      data.message || data.detail || `请求失败 (${res.status})`,
+      res.status,
+    );
+  }
+
+  return data as T;
+}
+
 export async function streamChat(
   endpoint: string,
   body: Record<string, unknown>,
@@ -62,53 +107,34 @@ export async function streamChat(
   if (!receivedDone) onDone();
 }
 
-export async function fetchSpotPhoto(spotName: string, city: string): Promise<string> {
-  try {
-    const res = await fetch(`${API_BASE}/api/generate-image`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-      body: JSON.stringify({ spot_name: spotName, city }),
-    });
-    if (!res.ok) return "";
-    const data = await res.json();
-    if (data.status === "ok") return data.url || data.base64 || "";
-  } catch {}
-  return "";
-}
-
 // History API
 export async function fetchHistory(): Promise<any[]> {
   try {
-    const res = await fetch(`${API_BASE}/api/history`, { headers: getAuthHeaders() });
-    if (!res.ok) return [];
-    const data = await res.json();
+    const data = await request<{ plans?: any[] }>("/api/history");
     return data.plans || [];
   } catch { return []; }
 }
 
 export async function fetchPlan(id: number): Promise<any> {
   try {
-    const res = await fetch(`${API_BASE}/api/history/${id}`, { headers: getAuthHeaders() });
-    if (!res.ok) return null;
-    return await res.json();
+    return await request(`/api/history/${id}`);
   } catch { return null; }
 }
 
 export async function deletePlan(id: number): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE}/api/history/${id}`, { method: "DELETE", headers: getAuthHeaders() });
-    return res.ok;
+    await request(`/api/history/${id}`, { method: "DELETE" });
+    return true;
   } catch { return false; }
 }
 
 export async function savePlanToHistory(data: Record<string, unknown>): Promise<any> {
   try {
-    const res = await fetch(`${API_BASE}/api/history`, {
+    return await request("/api/history", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
       body: JSON.stringify(data),
     });
-    if (!res.ok) return null;
-    return await res.json();
   } catch { return null; }
 }
+
+export { sanitize };

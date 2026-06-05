@@ -1,11 +1,11 @@
 # backend/main.py - FastAPI 后端
-from fastapi import FastAPI, Depends, Header
+from fastapi import FastAPI, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, FileResponse
-from pydantic import BaseModel
+from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
+from pydantic import BaseModel, field_validator, constr
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from tools.images import generate_spot_image, extract_spots_from_text, geocode_spots
+from tools.images import generate_spot_image, extract_spots_from_text, extract_spot_details, geocode_spots
 from tools.export import export_to_word
 from tools.search import get_weather
 from config import ARK_API_KEY, ARK_BASE_URL, CHAT_MODEL, AMAP_WEB_KEY
@@ -13,8 +13,11 @@ from database import get_db, init_db
 from auth import hash_password, verify_password, create_token, get_current_user
 from history import save_plan, list_plans, get_plan, update_plan_text, delete_plan as delete_plan_row
 from prompts_en import SYSTEM_PROMPT_EN
+from rate_limiter import auth_limiter, api_limiter
 import json
 import os
+import re
+import html
 import requests as http_requests
 
 # ==================== Session 持久化 ====================
@@ -23,18 +26,62 @@ os.makedirs(SESSION_DIR, exist_ok=True)
 
 app = FastAPI(title="野渡寻踪 API")
 
+# ==================== 安全头中间件 ====================
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    return response
+
+# ==================== CORS ====================
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://yeduxunzhong.pages.dev",
+    "https://yeduxunzhong-*.pages.dev",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # 开发阶段保持 *，生产应改为 ALLOWED_ORIGINS
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+# ==================== 统一异常处理 ====================
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    # 避免泄露内部错误信息
+    import traceback
+    traceback.print_exc()  # 服务端日志保留完整错误
+    return JSONResponse(
+        status_code=500,
+        content={"status": "error", "message": "服务器内部错误，请稍后重试"},
+    )
+
+
 @app.on_event("startup")
 async def startup():
     await init_db()
+
+
+# ==================== 输入清洗工具 ====================
+def sanitize_text(text: str) -> str:
+    """清洗用户输入，移除潜在危险字符"""
+    if not text:
+        return text
+    # 去除首尾空白
+    text = text.strip()
+    # 转义 HTML
+    text = html.escape(text, quote=False)
+    # 移除控制字符（保留换行和制表符）
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+    return text
 
 
 # ==================== 可选认证（未登录也能用，登录后关联用户） ====================
@@ -52,17 +99,31 @@ async def optional_user(authorization: str = Header(None)) -> int:
 # ==================== Auth 端点 ====================
 
 class RegisterRequest(BaseModel):
-    username: str
-    password: str
+    username: constr(min_length=2, max_length=20, pattern=r'^[a-zA-Z0-9_一-鿿]+$')
+    password: constr(min_length=6, max_length=64)
+
+    @field_validator('username')
+    @classmethod
+    def sanitize_username(cls, v: str) -> str:
+        return sanitize_text(v)
 
 
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    username: constr(min_length=1, max_length=20)
+    password: constr(min_length=1, max_length=64)
+
+    @field_validator('username')
+    @classmethod
+    def sanitize_username(cls, v: str) -> str:
+        return sanitize_text(v)
 
 
 @app.post("/api/auth/register")
-async def register(req: RegisterRequest):
+async def register(req: RegisterRequest, request: Request):
+    # 速率限制
+    client_ip = request.client.host if request.client else "unknown"
+    auth_limiter.check(f"register:{client_ip}")
+
     username = req.username.strip()
     if not username:
         return {"status": "error", "message": "请输入用户名"}
@@ -89,7 +150,11 @@ async def register(req: RegisterRequest):
 
 
 @app.post("/api/auth/login")
-async def login(req: LoginRequest):
+async def login(req: LoginRequest, request: Request):
+    # 速率限制
+    client_ip = request.client.host if request.client else "unknown"
+    auth_limiter.check(f"login:{client_ip}")
+
     username = req.username.strip()
     db = await get_db()
     try:
@@ -125,6 +190,8 @@ llm = ChatOpenAI(
     api_key=ARK_API_KEY,
     base_url=ARK_BASE_URL,
     streaming=True,
+    max_tokens=4096,
+    request_timeout=120,
 )
 
 SYSTEM_PROMPT = """你是"野渡寻踪"的 AI 助手，专门为预算有限的旅行者生成个性化攻略。
@@ -220,23 +287,73 @@ class RecommendRequest(BaseModel):
     session_id: str = "default"
     language: str = "zh"
 
+    @field_validator('session_id')
+    @classmethod
+    def validate_session_id(cls, v: str) -> str:
+        # 限制 session_id 格式
+        if not re.match(r'^[a-zA-Z0-9_-]{1,64}$', v):
+            return "default"
+        return v
+
+    @field_validator('params')
+    @classmethod
+    def validate_params(cls, v: dict) -> dict:
+        # 清洗 params 中的字符串值
+        for key, val in v.items():
+            if isinstance(val, str):
+                v[key] = sanitize_text(val)[:500]  # 限制长度
+        return v
+
 
 class PlanRequest(BaseModel):
-    session_id: str
+    session_id: str = "default"
     spots: list
     language: str = "zh"
 
+    @field_validator('session_id')
+    @classmethod
+    def validate_session_id(cls, v: str) -> str:
+        if not re.match(r'^[a-zA-Z0-9_-]{1,64}$', v):
+            return "default"
+        return v
+
+    @field_validator('spots')
+    @classmethod
+    def validate_spots(cls, v: list) -> list:
+        if len(v) > 20:
+            raise ValueError("最多选择20个景点")
+        return [sanitize_text(str(s))[:100] for s in v]
+
 
 class ModifyRequest(BaseModel):
-    session_id: str
+    session_id: str = "default"
     message: str
     preview: bool = False
     language: str = "zh"
+
+    @field_validator('session_id')
+    @classmethod
+    def validate_session_id(cls, v: str) -> str:
+        if not re.match(r'^[a-zA-Z0-9_-]{1,64}$', v):
+            return "default"
+        return v
+
+    @field_validator('message')
+    @classmethod
+    def validate_message(cls, v: str) -> str:
+        if len(v) > 2000:
+            raise ValueError("消息不能超过2000字")
+        return sanitize_text(v)
 
 
 class ImageRequest(BaseModel):
     spot_name: str
     city: str = ""
+
+    @field_validator('spot_name', 'city')
+    @classmethod
+    def sanitize_fields(cls, v: str) -> str:
+        return sanitize_text(v)[:100]
 
 
 class ExportRequest(BaseModel):
@@ -244,16 +361,29 @@ class ExportRequest(BaseModel):
     session_id: str = "default"
 
 
-def stream_llm(messages: list):
-    """统一的 LLM 流式输出"""
-    full_response = ""
-    try:
-        for chunk in llm.stream(messages):
-            if chunk.content:
-                full_response += chunk.content
-                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk.content}, ensure_ascii=False)}\n\n"
-    except Exception as e:
-        yield f"data: {json.dumps({'type': 'error', 'content': str(e)}, ensure_ascii=False)}\n\n"
+def stream_llm(messages: list, max_retries: int = 2):
+    """统一的 LLM 流式输出，带重试机制"""
+    for attempt in range(max_retries + 1):
+        full_response = ""
+        try:
+            for chunk in llm.stream(messages):
+                if chunk.content:
+                    full_response += chunk.content
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': chunk.content}, ensure_ascii=False)}\n\n"
+            # 正常完成
+            print(f"[stream_llm] 完成, 总长度: {len(full_response)}")
+            return full_response
+        except Exception as e:
+            print(f"[stream_llm] 第{attempt+1}次尝试异常: {e}")
+            if attempt < max_retries and len(full_response) < 200:
+                # 输出太短，可能是 API 不稳定，重试
+                print(f"[stream_llm] 输出太短({len(full_response)}字符)，重试...")
+                # 先把已有的短内容撤回提示（前端会显示）
+                yield f"data: {json.dumps({'type': 'chunk', 'content': '\n\n⏳ 网络波动，正在重试...'}, ensure_ascii=False)}\n\n"
+                continue
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'content': str(e)}, ensure_ascii=False)}\n\n"
+                return full_response
     return full_response
 
 
@@ -267,19 +397,17 @@ async def recommend(req: RecommendRequest, user_id: int = Depends(optional_user)
     from_city = params.get('from_city', '')
     to_city = params.get('to_city', '')
 
-    prompt = f"""我想从{from_city}去{to_city}旅行{params.get('days',3)}天，{dep}到达，{ret}返程。预算{params.get('budget',3000)}元，旅行类型"{params.get('travel_type','性价比出行')}"，用户类型"{params.get('user_type','成人')}"。
-交通：去程{params.get('transport_go','高铁')}，返程{params.get('transport_back','高铁')}。住宿：{params.get('accommodation','经济酒店')}。同行{params.get('companions_count',1)}人，{params.get('companion_type','独自出行')}。
+    prompt = f"""请推荐{to_city}的 8-10 个热门景点，按地理位置分组排列。
 
-请推荐{to_city}的 6-10 个热门景点，按以下格式输出（简洁为主，不要写太多）：
+严格按以下格式输出，每个景点只输出4行，不要添加任何额外内容（不要写开头语、总结、提醒等）：
 
 ---
 🏞️ **景点名**
-🎫 门票：全价XX元 / {params.get('user_type','成人')}优惠价XX元
-⏰ 游玩时长：X小时 | ⭐ 推荐指数：X/5
-📝 一句话描述
+🎫 门票：XX元 | ⏰ X小时 | ⭐ X/5
+📝 一句话描述这个景点最核心的游玩体验
 ---
 
-按地理位置分组排列，方便后续规划不走回头路的路线。"""
+用户参数：{params.get('days',3)}天、预算{params.get('budget',3000)}元/人、{params.get('user_type','成人')}身份、{params.get('travel_type','性价比出行')}风格。"""
 
     # 查询目的地天气，注入 prompt
     weather_info = get_weather(to_city)
@@ -296,8 +424,9 @@ async def recommend(req: RecommendRequest, user_id: int = Depends(optional_user)
         session["recommendation"] = full_response
         _save_session(req.session_id)
         spots = extract_spots_from_text(full_response)
+        spot_details = extract_spot_details(full_response)
         coords = geocode_spots(spots, to_city)
-        yield f"data: {json.dumps({'type': 'done', 'spots': spots, 'coords': coords}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'spots': spots, 'spot_details': spot_details, 'coords': coords}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 
@@ -451,6 +580,18 @@ class GeocodeRequest(BaseModel):
     spots: list
     city: str = ""
 
+    @field_validator('spots')
+    @classmethod
+    def validate_spots(cls, v: list) -> list:
+        if len(v) > 20:
+            raise ValueError("最多20个景点")
+        return [sanitize_text(str(s))[:100] for s in v]
+
+    @field_validator('city')
+    @classmethod
+    def sanitize_city(cls, v: str) -> str:
+        return sanitize_text(v)[:50]
+
 
 @app.post("/api/geocode")
 async def geocode(req: GeocodeRequest):
@@ -504,6 +645,25 @@ class SavePlanRequest(BaseModel):
     recommendation: str = ""
     plan_text: str = ""
     params: dict = {}
+
+    @field_validator('title', 'from_city', 'to_city')
+    @classmethod
+    def sanitize_strings(cls, v: str) -> str:
+        return sanitize_text(v)[:200]
+
+    @field_validator('days')
+    @classmethod
+    def validate_days(cls, v: int) -> int:
+        if v < 1 or v > 30:
+            return 3
+        return v
+
+    @field_validator('budget')
+    @classmethod
+    def validate_budget(cls, v: int) -> int:
+        if v < 0 or v > 1000000:
+            return 3000
+        return v
 
 
 @app.get("/api/history")

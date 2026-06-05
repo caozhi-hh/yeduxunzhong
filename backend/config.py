@@ -5,8 +5,8 @@ import os
 ARK_API_KEY = os.environ.get("ARK_API_KEY", "sk-9e8036d16b7048fca350b07e50be0773")
 ARK_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
-# 对话模型：Qwen Max
-CHAT_MODEL = "qwen-max"
+# 对话模型：Qwen Plus（比 Max 更稳定，适合流式输出）
+CHAT_MODEL = "qwen-plus"
 
 # 图片生成模型：通义万相
 IMAGE_MODEL = "wanx2.1-t2i-turbo"

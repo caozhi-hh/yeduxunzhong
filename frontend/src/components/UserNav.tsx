@@ -29,7 +29,7 @@ export default function UserNav() {
         onClick={() => setShowDropdown((v) => !v)}
         className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/20 transition-all"
       >
-        <div className="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-bold">
+        <div className="w-7 h-7 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold">
           {initial}
         </div>
         <span className="text-sm text-white font-medium max-w-[80px] truncate">
@@ -42,7 +42,7 @@ export default function UserNav() {
           <Link
             href="/history"
             onClick={() => setShowDropdown(false)}
-            className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-600 transition-colors"
+            className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors"
           >
             历史攻略
           </Link>

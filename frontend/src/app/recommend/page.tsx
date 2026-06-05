@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { streamChat, fetchSpotPhoto } from "@/lib/api";
+import { streamChat } from "@/lib/api";
 import UserNav from "@/components/UserNav";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { useAuth } from "@/lib/auth";
@@ -11,8 +11,10 @@ import { useAuth } from "@/lib/auth";
 interface Spot {
   name: string;
   selected: boolean;
-  imageLoading: boolean;
-  imageBase64: string;
+  rating: string;
+  duration: string;
+  ticket: string;
+  desc: string;
 }
 
 const travelTypes = [
@@ -20,11 +22,11 @@ const travelTypes = [
   { icon: "💰", label: "性价比出行", desc: "花最少的钱，玩最多的地方", color: "from-yellow-400 to-amber-400" },
   { icon: "👑", label: "享受出行", desc: "品质优先，舒适体验", color: "from-purple-400 to-pink-400" },
   { icon: "🚶", label: "City Walk", desc: "漫无目的，随性而走", color: "from-blue-400 to-cyan-400" },
-  { icon: "🧘", label: "慢旅行", desc: "不赶路，感受路", color: "from-teal-400 to-green-400" },
+  { icon: "🧘", label: "慢旅行", desc: "不赶路，感受路", color: "from-indigo-400 to-green-400" },
   { icon: "😴", label: "窝囊旅游", desc: "睡到自然醒，饿了就吃", color: "from-indigo-400 to-blue-400" },
   { icon: "🍜", label: "美食之旅", desc: "为一顿饭赴一座城", color: "from-orange-400 to-red-400" },
   { icon: "📸", label: "打卡出片", desc: "出片就是正义", color: "from-pink-400 to-rose-400" },
-  { icon: "🏔️", label: "探索冒险", desc: "不走寻常路", color: "from-emerald-400 to-teal-400" },
+  { icon: "🏔️", label: "探索冒险", desc: "不走寻常路", color: "from-blue-400 to-indigo-400" },
   { icon: "🎯", label: "主题深度游", desc: "深挖一个主题，玩透一座城", color: "from-cyan-400 to-blue-400" },
 ];
 
@@ -87,8 +89,6 @@ export default function RecommendPage() {
   const [companions, setCompanions] = useState(1);
   const [companionType, setCompanionType] = useState(companionTypes[0]);
 
-  const [imageProgress, setImageProgress] = useState({ loaded: 0, total: 0 });
-
   const [step, setStep] = useState(1);
   const [direction, setDirection] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -139,26 +139,25 @@ export default function RecommendPage() {
       (chunk) => { fullText += chunk; setRecommendation(fullText); },
       (data) => {
         const extractedSpots = (data?.spots as string[]) || [];
+        const spotDetails = (data?.spot_details as { name: string; rating: string; duration: string; ticket: string; desc: string }[]) || [];
         const coords = (data?.coords as { name: string; lng: number; lat: number }[]) || [];
-        const spotList = extractedSpots.map((name) => ({ name, selected: false, imageLoading: true, imageBase64: "" }));
+
+        // 用 spot_details 构建富信息列表，降级用纯名字
+        const detailMap = new Map(spotDetails.map((s) => [s.name, s]));
+        const spotList = extractedSpots.map((name) => ({
+          name,
+          selected: false,
+          rating: detailMap.get(name)?.rating || "",
+          duration: detailMap.get(name)?.duration || "",
+          ticket: detailMap.get(name)?.ticket || "",
+          desc: detailMap.get(name)?.desc || "",
+        }));
         setSpots(spotList);
-        setImageProgress({ loaded: 0, total: spotList.length });
         setLoading(false);
         // 保存坐标到 localStorage 供地图使用
         if (coords.length > 0) {
           localStorage.setItem("yedu_spot_coords", JSON.stringify(coords));
         }
-        // 自动加载每个景点的照片
-        spotList.forEach((spot, idx) => {
-          fetchSpotPhoto(spot.name, toCity).then((url) => {
-            setImageProgress((prev) => ({ ...prev, loaded: prev.loaded + 1 }));
-            if (url) {
-              setSpots((prev) => prev.map((s, i) => i === idx ? { ...s, imageLoading: false, imageBase64: url } : s));
-            } else {
-              setSpots((prev) => prev.map((s, i) => i === idx ? { ...s, imageLoading: false } : s));
-            }
-          });
-        });
       },
     );
   };
@@ -170,6 +169,9 @@ export default function RecommendPage() {
   const handleConfirm = () => {
     const selected = spots.filter((s) => s.selected).map((s) => s.name);
     if (selected.length === 0) return;
+    // 清除旧攻略数据，确保 plan 页面重新生成
+    localStorage.removeItem("yedu_plan");
+    localStorage.removeItem("yedu_spot_coords");
     localStorage.setItem("yedu_selected_spots", JSON.stringify(selected));
     localStorage.setItem("yedu_session_id", "s1");
     localStorage.setItem("yedu_to_city", toCity);
@@ -198,11 +200,11 @@ export default function RecommendPage() {
   if (authLoading || !isAuthenticated) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-emerald-50 flex flex-col relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex flex-col relative overflow-hidden">
       {/* 背景装饰 */}
-      <div className="absolute top-20 left-10 w-64 h-64 bg-emerald-200/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-40 right-10 w-80 h-80 bg-teal-200/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-100/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-20 left-10 w-64 h-64 bg-blue-200/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-40 right-10 w-80 h-80 bg-indigo-200/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-100/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* 顶部步骤条 */}
       <nav className="sticky top-0 z-20 bg-white/70 backdrop-blur-xl border-b border-gray-100/50 px-3 sm:px-6 py-3 sm:py-4">
@@ -219,23 +221,23 @@ export default function RecommendPage() {
                   transition={{ duration: 0.4 }}
                   className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold transition-all ${
                     step === s.num
-                      ? "bg-emerald-500 text-white shadow-lg shadow-emerald-200"
+                      ? "bg-blue-500 text-white shadow-lg shadow-blue-200"
                       : step > s.num
-                        ? "bg-emerald-100 text-emerald-600"
+                        ? "bg-blue-100 text-blue-600"
                         : "bg-gray-100 text-gray-400"
                   }`}
                 >
                   {step > s.num ? "✓" : s.num}
                 </motion.div>
                 <span className={`text-xs sm:text-sm font-medium hidden sm:inline ${
-                  step === s.num ? "text-emerald-700" : step > s.num ? "text-emerald-500" : "text-gray-400"
+                  step === s.num ? "text-blue-700" : step > s.num ? "text-blue-500" : "text-gray-400"
                 }`}>
                   {s.label}
                 </span>
               </button>
               {i < STEPS.length - 1 && (
                 <div className={`w-4 sm:w-16 h-0.5 mx-0.5 sm:mx-1 rounded-full transition-all duration-500 ${
-                  step > s.num ? "bg-emerald-400" : "bg-gray-200"
+                  step > s.num ? "bg-blue-400" : "bg-gray-200"
                 }`} />
               )}
             </div>
@@ -258,7 +260,7 @@ export default function RecommendPage() {
                     initial={{ scale: 0.5, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ type: "spring", stiffness: 200 }}
-                    className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 shadow-xl shadow-emerald-200/50 mb-4"
+                    className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-400 to-indigo-500 shadow-xl shadow-blue-200/50 mb-4"
                   >
                     <span className="text-4xl">📍</span>
                   </motion.div>
@@ -271,7 +273,7 @@ export default function RecommendPage() {
                     <label className="block text-sm font-medium text-gray-600 mb-2">🏠 出发城市</label>
                     <input
                       type="text" value={fromCity} onChange={(e) => setFromCity(e.target.value)}
-                      className="w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white text-gray-800 text-lg focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none transition-all shadow-sm"
+                      className="w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white text-gray-800 text-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none transition-all shadow-sm"
                     />
                   </div>
                   <div>
@@ -279,7 +281,7 @@ export default function RecommendPage() {
                     <input
                       type="text" value={toCity} onChange={(e) => setToCity(e.target.value)}
                       placeholder="输入你想去的城市..."
-                      className="w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white text-gray-800 text-lg focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none transition-all placeholder:text-gray-300 shadow-sm"
+                      className="w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white text-gray-800 text-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none transition-all placeholder:text-gray-300 shadow-sm"
                     />
                   </div>
                 </div>
@@ -296,8 +298,8 @@ export default function RecommendPage() {
                         onClick={() => setToCity(city.name)}
                         className={`px-4 py-2 rounded-full text-sm font-medium transition-all shadow-sm ${
                           toCity === city.name
-                            ? "bg-emerald-500 text-white shadow-md shadow-emerald-200"
-                            : "bg-white text-gray-600 border border-gray-100 hover:border-emerald-300 hover:text-emerald-600"
+                            ? "bg-blue-500 text-white shadow-md shadow-blue-200"
+                            : "bg-white text-gray-600 border border-gray-100 hover:border-blue-300 hover:text-blue-600"
                         }`}
                       >
                         {city.emoji} {city.name}
@@ -351,14 +353,14 @@ export default function RecommendPage() {
                     <label className="block text-sm font-medium text-gray-600 mb-2">📅 到达时间</label>
                     <input
                       type="datetime-local" value={depDate} onChange={(e) => setDepDate(e.target.value)}
-                      className="w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white text-gray-800 text-lg focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none transition-all shadow-sm"
+                      className="w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white text-gray-800 text-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none transition-all shadow-sm"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-600 mb-2">📅 返程时间</label>
                     <input
                       type="datetime-local" value={retDate} onChange={(e) => setRetDate(e.target.value)}
-                      className="w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white text-gray-800 text-lg focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none transition-all shadow-sm"
+                      className="w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white text-gray-800 text-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none transition-all shadow-sm"
                     />
                   </div>
                 </div>
@@ -370,11 +372,11 @@ export default function RecommendPage() {
                     animate={{ opacity: 1, y: 0 }}
                     className="mt-6 text-center"
                   >
-                    <div className="inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-2xl border border-emerald-100">
+                    <div className="inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-100">
                       <span className="text-2xl">🗓️</span>
                       <div className="text-left">
                         <p className="text-xs text-gray-500">{fmtDate(depDate)} — {fmtDate(retDate)}</p>
-                        <p className="text-emerald-700 font-bold text-lg">{days} 天行程</p>
+                        <p className="text-blue-700 font-bold text-lg">{days} 天行程</p>
                       </div>
                     </div>
                   </motion.div>
@@ -417,7 +419,7 @@ export default function RecommendPage() {
                     <input
                       type="range" min={500} max={20000} step={500} value={budget}
                       onChange={(e) => setBudget(Number(e.target.value))}
-                      className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-emerald-500"
+                      className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-blue-500"
                     />
                     <div className="flex justify-between text-xs text-gray-400 mt-2">
                       <span>¥500</span>
@@ -435,8 +437,8 @@ export default function RecommendPage() {
                         onClick={() => setBudget(b.max === 1500 ? 1500 : b.max === 3000 ? 3000 : b.max === 6000 ? 6000 : 10000)}
                         className={`py-2 px-2 rounded-xl text-xs font-medium transition-all ${
                           budget <= b.max && budget > (b.max === 1500 ? 0 : budgetHints[budgetHints.indexOf(b) - 1]?.max || 0)
-                            ? "bg-emerald-500 text-white shadow-md"
-                            : "bg-gray-50 text-gray-500 hover:bg-emerald-50"
+                            ? "bg-blue-500 text-white shadow-md"
+                            : "bg-gray-50 text-gray-500 hover:bg-blue-50"
                         }`}
                       >
                         {b.emoji} {b.label}
@@ -454,8 +456,8 @@ export default function RecommendPage() {
                           whileTap={{ scale: 0.95 }}
                           className={`px-3 py-3 rounded-xl text-sm font-medium transition-all ${
                             userType === u
-                              ? "bg-emerald-500 text-white shadow-lg shadow-emerald-200"
-                              : "bg-white text-gray-600 border border-gray-100 hover:border-emerald-200 hover:text-emerald-600 shadow-sm"
+                              ? "bg-blue-500 text-white shadow-lg shadow-blue-200"
+                              : "bg-white text-gray-600 border border-gray-100 hover:border-blue-200 hover:text-blue-600 shadow-sm"
                           }`}
                         >
                           {u}
@@ -494,7 +496,7 @@ export default function RecommendPage() {
                         className={`text-left p-4 rounded-2xl transition-all relative overflow-hidden ${
                           travelType === t.label
                             ? "bg-gradient-to-br " + t.color + " text-white shadow-xl scale-[1.02]"
-                            : "bg-white text-gray-700 border border-gray-100 hover:border-emerald-200 hover:shadow-lg"
+                            : "bg-white text-gray-700 border border-gray-100 hover:border-blue-200 hover:shadow-lg"
                         }`}
                       >
                         <div className="flex items-center gap-2">
@@ -523,28 +525,28 @@ export default function RecommendPage() {
                       <div>
                         <label className="block text-xs font-medium text-gray-400 mb-1.5">去程交通</label>
                         <select value={transportGo} onChange={(e) => setTransportGo(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm outline-none focus:ring-2 focus:ring-emerald-400 bg-white">
+                          className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm outline-none focus:ring-2 focus:ring-blue-400 bg-white">
                           {transportOptions.map((o) => <option key={o} value={o}>{o}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-gray-400 mb-1.5">返程交通</label>
                         <select value={transportBack} onChange={(e) => setTransportBack(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm outline-none focus:ring-2 focus:ring-emerald-400 bg-white">
+                          className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm outline-none focus:ring-2 focus:ring-blue-400 bg-white">
                           {transportOptions.map((o) => <option key={o} value={o}>{o}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-gray-400 mb-1.5">住宿偏好</label>
                         <select value={hotel} onChange={(e) => setHotel(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm outline-none focus:ring-2 focus:ring-emerald-400 bg-white">
+                          className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm outline-none focus:ring-2 focus:ring-blue-400 bg-white">
                           {hotelOptions.map((o) => <option key={o} value={o}>{o}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-gray-400 mb-1.5">同行关系</label>
                         <select value={companionType} onChange={(e) => setCompanionType(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm outline-none focus:ring-2 focus:ring-emerald-400 bg-white">
+                          className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm outline-none focus:ring-2 focus:ring-blue-400 bg-white">
                           {companionTypes.map((o) => <option key={o} value={o}>{o}</option>)}
                         </select>
                       </div>
@@ -554,7 +556,7 @@ export default function RecommendPage() {
                       <input
                         type="number" min={1} max={20} value={companions}
                         onChange={(e) => setCompanions(Number(e.target.value))}
-                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm outline-none focus:ring-2 focus:ring-emerald-400"
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm outline-none focus:ring-2 focus:ring-blue-400"
                       />
                     </div>
                   </div>
@@ -570,9 +572,9 @@ export default function RecommendPage() {
                     initial={{ scale: 0.5, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ type: "spring", stiffness: 200 }}
-                    className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-400 to-green-500 shadow-xl shadow-emerald-200/50 mb-4"
+                    className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-400 to-indigo-500 shadow-xl shadow-blue-200/50 mb-4"
                   >
-                    <span className="text-4xl">🌿</span>
+                    <span className="text-4xl">🧭</span>
                   </motion.div>
                   <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-800">AI 为你推荐</h2>
                 </div>
@@ -596,7 +598,7 @@ export default function RecommendPage() {
                       onClick={handleRecommend}
                       whileHover={{ scale: 1.03 }}
                       whileTap={{ scale: 0.97 }}
-                      className="px-12 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold text-lg rounded-2xl shadow-xl shadow-emerald-200/60 transition-all"
+                      className="px-12 py-4 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 text-white font-bold text-lg rounded-2xl shadow-xl shadow-blue-200/60 transition-all"
                     >
                       🚀 开始推荐
                     </motion.button>
@@ -604,95 +606,95 @@ export default function RecommendPage() {
                   </motion.div>
                 )}
 
-                {/* AI 推荐内容 */}
-                {(loading || recommendation) && (
-                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-6 text-left">
-                    <h3 className="text-sm font-bold text-emerald-700 mb-3">📋 AI 景点推荐</h3>
-                    {!recommendation && loading && (
-                      <div className="flex flex-col items-center justify-center py-10">
-                        <motion.div
-                          animate={{ rotate: 360 }}
-                          transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                          className="w-10 h-10 border-4 border-emerald-200 border-t-emerald-500 rounded-full mb-3"
-                        />
-                        <p className="text-emerald-600 font-medium text-sm">AI 正在分析最佳景点...</p>
-                        <p className="text-gray-400 text-xs mt-1">首次响应约 10-30 秒</p>
-                      </div>
-                    )}
-                    {recommendation && (
-                      <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">
-                        {recommendation}
-                        {loading && <span className="animate-pulse text-emerald-500">▍</span>}
-                      </div>
-                    )}
-                  </div>
+                {/* AI 加载动画（只在 loading 时显示） */}
+                {loading && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4 }}
+                    className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-6 text-center"
+                  >
+                    <div className="flex items-center justify-center gap-1.5 mb-3">
+                      <span className="text-2xl">🧭</span>
+                      <motion.span
+                        animate={{ rotate: [0, 15, -15, 0] }}
+                        transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+                        className="text-2xl inline-block"
+                      >
+                        ✨
+                      </motion.span>
+                    </div>
+                    <div className="flex justify-center gap-1.5 mb-4">
+                      <motion.span
+                        animate={{ y: [0, -8, 0] }}
+                        transition={{ duration: 0.6, repeat: Infinity, delay: 0 }}
+                        className="w-3 h-3 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-full shadow-md shadow-blue-200"
+                      />
+                      <motion.span
+                        animate={{ y: [0, -8, 0] }}
+                        transition={{ duration: 0.6, repeat: Infinity, delay: 0.15 }}
+                        className="w-3 h-3 bg-gradient-to-br from-indigo-400 to-blue-500 rounded-full shadow-md shadow-indigo-200"
+                      />
+                      <motion.span
+                        animate={{ y: [0, -8, 0] }}
+                        transition={{ duration: 0.6, repeat: Infinity, delay: 0.3 }}
+                        className="w-3 h-3 bg-gradient-to-br from-blue-400 to-cyan-400 rounded-full shadow-md shadow-blue-200"
+                      />
+                    </div>
+                    <p className="text-blue-600 font-medium text-sm">AI 正在搜索最佳景点...</p>
+                    <p className="text-gray-400 text-xs mt-1">首次响应约 10-30 秒</p>
+                  </motion.div>
                 )}
 
-                {/* 景点勾选 */}
+                {/* 景点勾选（完成后直接展示） */}
                 {spots.length > 0 && (
                   <>
-                    <h3 className="text-sm font-bold text-emerald-700 mb-3">✅ 勾选你想去的景点</h3>
-
-                    {/* 图片加载进度 */}
-                    {imageProgress.loaded < imageProgress.total && (
-                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-4 bg-white rounded-xl p-3 border border-emerald-100 shadow-sm">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs text-gray-500">📸 正在加载景点图片...</span>
-                          <span className="text-xs text-emerald-600 font-medium">{imageProgress.loaded}/{imageProgress.total}</span>
-                        </div>
-                        <div className="w-full bg-emerald-100 rounded-full h-2 overflow-hidden">
-                          <motion.div
-                            className="h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full"
-                            initial={{ width: 0 }}
-                            animate={{ width: `${(imageProgress.loaded / Math.max(imageProgress.total, 1)) * 100}%` }}
-                            transition={{ duration: 0.3 }}
-                          />
-                        </div>
-                      </motion.div>
-                    )}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+                    <h3 className="text-sm font-bold text-blue-700 mb-3">✅ 勾选你想去的景点（已找到 {spots.length} 个）</h3>
+                    <div className="space-y-2 mb-6">
                       {spots.map((spot, idx) => (
                         <motion.div
                           key={spot.name}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: idx * 0.06 }}
-                          whileHover={{ y: -3 }}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: idx * 0.04 }}
                           onClick={() => toggleSpot(idx)}
-                          className={`cursor-pointer rounded-2xl overflow-hidden transition-all ${
+                          className={`cursor-pointer rounded-xl px-4 py-3 transition-all flex items-start gap-3 ${
                             spot.selected
-                              ? "border-2 border-emerald-500 shadow-xl shadow-emerald-100 ring-2 ring-emerald-200"
-                              : "border-2 border-gray-100 hover:border-emerald-200 hover:shadow-lg bg-white"
+                              ? "bg-blue-50 border-2 border-blue-400 shadow-md shadow-blue-100"
+                              : "bg-white border-2 border-gray-100 hover:border-blue-200 hover:bg-blue-50/30"
                           }`}
                         >
-                          <div className="h-32 bg-gradient-to-br from-emerald-100 to-teal-50 flex items-center justify-center relative">
-                            {spot.imageBase64 ? (
-                              <img src={spot.imageBase64} alt={spot.name} className="w-full h-full object-cover" />
-                            ) : spot.imageLoading ? (
-                              <div className="w-6 h-6 border-2 border-emerald-300 border-t-emerald-500 rounded-full animate-spin" />
-                            ) : (
-                              <span className="text-4xl">🏞️</span>
-                            )}
-                            {spot.selected && (
-                              <motion.div
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                className="absolute top-2 right-2 w-7 h-7 bg-emerald-500 rounded-full flex items-center justify-center text-white text-sm shadow-md"
-                              >
-                                ✓
-                              </motion.div>
-                            )}
-                          </div>
-                          <div className="p-3">
-                            <h4 className="font-bold text-gray-800 text-sm">{spot.name}</h4>
+                          {/* 勾选圆 */}
+                          <div className={`mt-1 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+                            spot.selected
+                              ? "bg-blue-500 border-blue-500"
+                              : "border-gray-300"
+                          }`}>
                             {spot.selected && (
                               <motion.span
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                className="inline-block mt-1 text-xs bg-emerald-500 text-white px-2.5 py-0.5 rounded-full"
-                              >
-                                ✓ 已选择
-                              </motion.span>
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                className="text-white text-xs"
+                              >✓</motion.span>
+                            )}
+                          </div>
+
+                          {/* 景点信息 */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-gray-800 text-sm">{spot.name}</span>
+                              {spot.rating && (
+                                <span className="text-xs text-amber-500 font-medium bg-amber-50 px-1.5 py-0.5 rounded">⭐ {spot.rating}</span>
+                              )}
+                              {spot.duration && (
+                                <span className="text-xs text-blue-500 font-medium bg-blue-50 px-1.5 py-0.5 rounded">⏱ {spot.duration}</span>
+                              )}
+                              {spot.ticket && (
+                                <span className="text-xs text-green-600 font-medium bg-green-50 px-1.5 py-0.5 rounded">🎫 {spot.ticket}</span>
+                              )}
+                            </div>
+                            {spot.desc && (
+                              <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">{spot.desc}</p>
                             )}
                           </div>
                         </motion.div>
@@ -706,12 +708,12 @@ export default function RecommendPage() {
                       className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white rounded-2xl p-4 sm:p-5 shadow-lg border border-gray-100"
                     >
                       <span className="text-gray-600 text-sm">
-                        已选 <strong className="text-emerald-600 text-lg">{selectedCount}</strong> 个景点
+                        已选 <strong className="text-blue-600 text-lg">{selectedCount}</strong> 个景点
                       </span>
                       <button
                         onClick={handleConfirm}
                         disabled={selectedCount === 0}
-                        className="px-6 sm:px-8 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:from-gray-300 disabled:to-gray-300 text-white text-sm font-bold transition-all shadow-lg shadow-emerald-200/50 disabled:shadow-none"
+                        className="px-6 sm:px-8 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 disabled:from-gray-300 disabled:to-gray-300 text-white text-sm font-bold transition-all shadow-lg shadow-blue-200/50 disabled:shadow-none"
                       >
                         ✅ 生成攻略
                       </button>
@@ -743,7 +745,7 @@ export default function RecommendPage() {
               disabled={!canNext()}
               whileHover={canNext() ? { scale: 1.03 } : {}}
               whileTap={canNext() ? { scale: 0.97 } : {}}
-              className="px-8 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:from-gray-200 disabled:to-gray-200 disabled:text-gray-400 text-white font-bold transition-all shadow-lg shadow-emerald-200/30 disabled:shadow-none"
+              className="px-8 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 disabled:from-gray-200 disabled:to-gray-200 disabled:text-gray-400 text-white font-bold transition-all shadow-lg shadow-blue-200/30 disabled:shadow-none"
             >
               下一步 →
             </motion.button>
@@ -786,3 +788,4 @@ function SummaryCard({ icon, label, value }: { icon: string; label: string; valu
     </motion.div>
   );
 }
+

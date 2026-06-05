@@ -76,7 +76,7 @@ def extract_spots_from_text(text: str) -> list:
         "美食", "特产", "小吃", "景点推荐", "安排", "路线",
         "全天", "半天", "上午", "下午", "傍晚", "晚上", "夜景",
         "早上", "出发", "回程", "自由", "休息", "返程",
-        "预约", "放票", "抢票",
+        "预约", "放票", "抢票", "旅行", "类型", "出行",
     ]
     for match in re.finditer(bold_pattern, text):
         name = match.group(1).strip()
@@ -91,6 +91,112 @@ def extract_spots_from_text(text: str) -> list:
             if name not in seen and len(name) >= 2:
                 spots.append(name)
                 seen.add(name)
+
+    # 兜底：按 --- 或 \n\n 分段，找含 emoji 的行
+    if len(spots) < 3:
+        segments = re.split(r'(?:---|\n{2,})', text)
+        for seg in segments:
+            lines = seg.strip().split('\n')
+            if not lines:
+                continue
+            first = lines[0].strip()
+            # 从第一行提取名字（去掉 emoji 和 markdown 符号）
+            clean = re.sub(r'[🏞️🏯🏔️🛕🏛️🕌🏰⛩️⛪🌉🌃🏖️🌋🏕️📄🎫⏰📍📝🔀💡⭐*\s]', '', first).strip()
+            if clean and clean not in seen and len(clean) >= 2 and not any(w in clean for w in skip_words):
+                spots.append(clean)
+                seen.add(clean)
+
+    return spots[:12]
+
+
+def extract_spot_details(text: str) -> list:
+    """从 AI 推荐文本中提取景点详细信息（名称、评分、时长、描述）。"""
+    spots = []
+    seen = set()
+
+    skip_words = [
+        "门票", "时长", "推荐", "价格", "费用", "交通", "住宿", "餐饮",
+        "预算", "行程", "描述", "备注", "总计", "合计", "Day", "天", "第",
+        "小时", "元", "攻略", "参考", "其他", "注意", "提示", "建议",
+        "到达", "离开", "早", "中", "晚", "餐", "住宿建议", "费用明细",
+        "实用贴士", "详细攻略", "大景点", "推荐景点", "顺路", "位置",
+        "美食", "特产", "小吃", "景点推荐", "安排", "路线",
+        "全天", "半天", "上午", "下午", "傍晚", "晚上", "夜景",
+        "早上", "出发", "回程", "自由", "休息", "返程",
+        "预约", "放票", "抢票", "旅行", "类型", "出行",
+    ]
+
+    # 按 --- 分段，每段是一个景点
+    segments = re.split(r'---+', text)
+
+    for seg in segments:
+        seg = seg.strip()
+        if not seg:
+            continue
+
+        lines = seg.split('\n')
+        name = ""
+        rating = ""
+        duration = ""
+        desc = ""
+        ticket = ""
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # 提取名字：从 bold 标记或第一行含 emoji 的行
+            bold_match = re.search(r'\*\*([^*]{2,20})\*\*', line)
+            if bold_match:
+                candidate = bold_match.group(1).strip()
+                if not name and not any(w in candidate for w in skip_words):
+                    name = candidate
+
+            # 提取评分
+            rating_match = re.search(r'⭐\s*推荐指数[：:]\s*(\S+)', line)
+            if rating_match:
+                rating = rating_match.group(1).strip()
+            else:
+                rating_match = re.search(r'⭐\s*(\d\.?\d*\s*[/／]\s*\d)', line)
+                if rating_match:
+                    rating = rating_match.group(1).strip()
+
+            # 提取时长
+            duration_match = re.search(r'游玩时长[：:]\s*(\S+)', line)
+            if duration_match:
+                duration = duration_match.group(1).strip()
+            else:
+                duration_match = re.search(r'⏰\s*(\d+[~\-到]\d*\s*小时)', line)
+                if duration_match:
+                    duration = duration_match.group(1).strip()
+
+            # 提取门票
+            ticket_match = re.search(r'门票[：:]\s*(.+?)(?:\||\n|$)', line)
+            if ticket_match:
+                ticket = ticket_match.group(1).strip()
+
+            # 提取描述（📝 开头或一句话描述）
+            if '📝' in line or '一句话描述' in line:
+                desc_clean = re.sub(r'[📝\s]', ' ', line).strip()
+                desc = re.sub(r'一句话描述[：:]?\s*', '', desc_clean).strip()
+
+        # 如果没有通过 bold 提取到名字，尝试从第一行提取
+        if not name and lines:
+            first = lines[0].strip()
+            clean = re.sub(r'[🏞️🏯🏔️🛕🏛️🕌🏰⛩️⛪🌉🌃🏖️🌋🏕️*\s]', '', first).strip()
+            if clean and len(clean) >= 2 and not any(w in clean for w in skip_words):
+                name = clean
+
+        if name and name not in seen and len(name) >= 2:
+            seen.add(name)
+            spots.append({
+                "name": name,
+                "rating": rating or "",
+                "duration": duration or "",
+                "ticket": ticket or "",
+                "desc": desc or "",
+            })
 
     return spots[:12]
 

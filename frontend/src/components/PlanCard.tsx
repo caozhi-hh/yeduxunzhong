@@ -37,7 +37,7 @@ export default function PlanCard({ plan, onClick, onDelete }: PlanCardProps) {
         </div>
 
         <div className="flex flex-wrap gap-2 text-xs text-gray-500 mb-3">
-          <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full">
+          <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">
             {plan.from_city} → {plan.to_city}
           </span>
           <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">

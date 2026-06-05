@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
@@ -137,15 +137,29 @@ export default function PlanPage() {
     setLoading(true);
     setPlan("");
     let fullText = "";
+    let lastUpdate = 0;
+    let pendingText = "";
+    let rafId = 0;
+
+    // 节流更新：用 requestAnimationFrame 合并渲染，避免每个 chunk 都重渲染
+    const scheduleUpdate = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        setPlan(fullText);
+        pendingText = "";
+      });
+    };
 
     await streamChat(
       "/api/generate-plan",
       { session_id: sid, spots: spotList },
       (chunk) => {
         fullText += chunk;
-        setPlan(fullText);
+        scheduleUpdate();
       },
       () => {
+        cancelAnimationFrame(rafId);
+        setPlan(fullText); // 最终确保完整内容
         setLoading(false);
       },
     );
@@ -161,22 +175,31 @@ export default function PlanPage() {
     setLoading(true);
     setAiTyping(true);
     let fullText = "";
+    let rafId = 0;
+
+    const scheduleMsgUpdate = (current: string) => {
+      cancelAnimationFrame(rafId);
+      const ft = current;
+      rafId = requestAnimationFrame(() => {
+        setMessages((prev) => {
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
+          if (lastIdx >= 0 && updated[lastIdx].role === "ai" && updated[lastIdx].isPreview) {
+            updated[lastIdx] = { ...updated[lastIdx], content: ft };
+          } else {
+            updated.push({ role: "ai", content: ft, isPreview: true, pendingMessage: text });
+          }
+          return updated;
+        });
+      });
+    };
 
     await streamChat(
       "/api/modify",
       { session_id: sessionId, message: text, preview: true },
       (chunk) => {
         fullText += chunk;
-        setMessages((prev) => {
-          const updated = [...prev];
-          const lastIdx = updated.length - 1;
-          if (lastIdx >= 0 && updated[lastIdx].role === "ai" && updated[lastIdx].isPreview) {
-            updated[lastIdx] = { ...updated[lastIdx], content: fullText };
-          } else {
-            updated.push({ role: "ai", content: fullText, isPreview: true, pendingMessage: text });
-          }
-          return updated;
-        });
+        scheduleMsgUpdate(fullText);
       },
       () => {
         setLoading(false);
@@ -200,18 +223,20 @@ export default function PlanPage() {
       return updated;
     });
 
+    let rafId2 = 0;
     await streamChat(
       "/api/modify",
       { session_id: sessionId, message: pendingMessage, preview: false },
       (chunk) => {
         fullText += chunk;
-        // 用新攻略直接替换旧的（同时自动保存到 localStorage）
-        setPlan(fullText);
+        cancelAnimationFrame(rafId2);
+        rafId2 = requestAnimationFrame(() => setPlan(fullText));
       },
       () => {
+        cancelAnimationFrame(rafId2);
+        setPlan(fullText);
         setLoading(false);
         setAiTyping(false);
-        // 清空对话，保持页面干净
         setMessages([]);
       },
     );
@@ -290,10 +315,10 @@ export default function PlanPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-emerald-50/30 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-blue-50/30 flex flex-col">
       {/* 顶部导航 */}
       <nav className="sticky top-0 z-20 bg-white/80 backdrop-blur-xl border-b border-gray-100/50 px-3 sm:px-6 py-3 flex items-center justify-between shadow-sm gap-2">
-        <button onClick={handleReset} className="text-emerald-600 font-medium hover:text-emerald-700 flex items-center gap-1 transition-all shrink-0">
+        <button onClick={handleReset} className="text-blue-600 font-medium hover:text-blue-700 flex items-center gap-1 transition-all shrink-0">
           <span>←</span> <span className="hidden sm:inline">重新开始</span>
         </button>
         <h1 className="text-sm sm:text-lg font-bold text-gray-800 truncate">🗺️ 详细攻略</h1>
@@ -310,7 +335,7 @@ export default function PlanPage() {
           <button
             onClick={handleExport}
             disabled={exporting || !plan}
-            className="px-2 sm:px-3 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:from-gray-300 disabled:to-gray-300 text-white text-xs sm:text-sm font-medium rounded-xl transition-all shadow-sm"
+            className="px-2 sm:px-3 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 disabled:from-gray-300 disabled:to-gray-300 text-white text-xs sm:text-sm font-medium rounded-xl transition-all shadow-sm"
           >
             {exporting ? "导出中..." : "📄 Word"}
           </button>
@@ -326,7 +351,7 @@ export default function PlanPage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm text-gray-500">已选景点：</span>
                 {spots.map((s) => (
-                  <span key={s} className="px-3 py-1 bg-emerald-50 text-emerald-700 text-sm rounded-full border border-emerald-200">
+                  <span key={s} className="px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-200">
                     {s}
                   </span>
                 ))}
@@ -348,9 +373,9 @@ export default function PlanPage() {
                 <motion.div
                   animate={{ rotate: 360 }}
                   transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                  className="w-12 h-12 border-4 border-emerald-200 border-t-emerald-500 rounded-full mb-4"
+                  className="w-12 h-12 border-4 border-blue-200 border-t-blue-500 rounded-full mb-4"
                 />
-                <p className="text-emerald-600 font-medium">AI 正在生成详细攻略...</p>
+                <p className="text-blue-600 font-medium">AI 正在生成详细攻略...</p>
                 <p className="text-gray-400 text-xs mt-2">首次响应可能需要 10-30 秒，请稍候</p>
               </div>
             )}
@@ -364,7 +389,7 @@ export default function PlanPage() {
             {plan && (
               <div className="prose prose-sm max-w-none text-gray-700">
                 <ReactMarkdown>{plan}</ReactMarkdown>
-                {loading && <span className="animate-pulse text-emerald-500 text-lg">▍</span>}
+                {loading && <span className="animate-pulse text-blue-500 text-lg">▍</span>}
               </div>
             )}
           </div>
@@ -380,7 +405,7 @@ export default function PlanPage() {
                     whileHover={{ scale: 1.03 }}
                     whileTap={{ scale: 0.97 }}
                     onClick={() => handleSend(action.prompt)}
-                    className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 transition-all shadow-sm"
+                    className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-all shadow-sm"
                   >
                     {action.icon} {action.label}
                   </motion.button>
@@ -407,14 +432,14 @@ export default function PlanPage() {
                     className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     {msg.role === "ai" && (
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white text-xs shrink-0 shadow-sm mt-0.5">
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-xs shrink-0 shadow-sm mt-0.5">
                         🌿
                       </div>
                     )}
                     <div
                       className={`max-w-[75%] px-4 py-2.5 text-sm leading-relaxed ${
                         msg.role === "user"
-                          ? "bg-emerald-500 text-white rounded-2xl rounded-br-md shadow-sm"
+                          ? "bg-blue-500 text-white rounded-2xl rounded-br-md shadow-sm"
                           : msg.isModification
                             ? "bg-amber-50 text-gray-700 rounded-2xl rounded-bl-md border border-amber-200"
                             : msg.isPreview
@@ -434,7 +459,7 @@ export default function PlanPage() {
                           <button
                             onClick={() => handleConfirmModify(msg.pendingMessage!, i)}
                             disabled={loading}
-                            className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg transition-all disabled:opacity-50"
+                            className="px-4 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-lg transition-all disabled:opacity-50"
                           >
                             ✅ 确认修改
                           </button>
@@ -449,7 +474,7 @@ export default function PlanPage() {
                       )}
                     </div>
                     {msg.role === "user" && (
-                      <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-xs shrink-0 mt-0.5">
+                      <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs shrink-0 mt-0.5">
                         你
                       </div>
                     )}
@@ -464,14 +489,14 @@ export default function PlanPage() {
                   animate={{ opacity: 1, y: 0 }}
                   className="flex gap-2 justify-start"
                 >
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white text-xs shrink-0 shadow-sm">
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-xs shrink-0 shadow-sm">
                     🌿
                   </div>
                   <div className="bg-gray-50 rounded-2xl rounded-bl-md border border-gray-100 px-4 py-3">
                     <div className="flex gap-1">
-                      <span className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <span className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <span className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                      <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                     </div>
                   </div>
                 </motion.div>
@@ -489,7 +514,7 @@ export default function PlanPage() {
                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend(chatInput)}
                   placeholder="告诉 AI 怎么调整攻略..."
                   disabled={loading}
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-gray-50 text-gray-800 text-sm outline-none focus:ring-2 focus:ring-emerald-400 focus:bg-white border border-gray-100 transition-all disabled:opacity-40"
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-gray-50 text-gray-800 text-sm outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white border border-gray-100 transition-all disabled:opacity-40"
                 />
               </div>
               <motion.button
@@ -497,7 +522,7 @@ export default function PlanPage() {
                 disabled={loading || !chatInput.trim()}
                 whileHover={!loading && chatInput.trim() ? { scale: 1.03 } : {}}
                 whileTap={!loading && chatInput.trim() ? { scale: 0.97 } : {}}
-                className="px-4 sm:px-5 py-2.5 sm:py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:from-gray-300 disabled:to-gray-300 text-white text-sm font-medium rounded-xl transition-all shadow-lg shadow-emerald-200/30 disabled:shadow-none"
+                className="px-4 sm:px-5 py-2.5 sm:py-3 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 disabled:from-gray-300 disabled:to-gray-300 text-white text-sm font-medium rounded-xl transition-all shadow-lg shadow-blue-200/30 disabled:shadow-none"
               >
                 发送
               </motion.button>

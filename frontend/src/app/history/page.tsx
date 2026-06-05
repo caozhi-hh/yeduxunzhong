@@ -52,15 +52,15 @@ export default function HistoryPage() {
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-3 border-emerald-200 border-t-emerald-500 rounded-full animate-spin" />
+        <div className="w-8 h-8 border-3 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-emerald-50/30">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-blue-50/30">
       <nav className="sticky top-0 z-20 bg-white/80 backdrop-blur-xl border-b border-gray-100/50 px-4 py-3 flex items-center justify-between shadow-sm">
-        <button onClick={() => router.push("/")} className="text-emerald-600 font-medium hover:text-emerald-700 flex items-center gap-1">
+        <button onClick={() => router.push("/")} className="text-blue-600 font-medium hover:text-blue-700 flex items-center gap-1">
           <span>←</span> 首页
         </button>
         <h1 className="text-lg font-bold text-gray-800">历史攻略</h1>
@@ -73,7 +73,7 @@ export default function HistoryPage() {
       <div className="max-w-2xl mx-auto px-4 py-6">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20">
-            <div className="w-8 h-8 border-3 border-emerald-200 border-t-emerald-500 rounded-full animate-spin mb-3" />
+            <div className="w-8 h-8 border-3 border-blue-200 border-t-blue-500 rounded-full animate-spin mb-3" />
             <p className="text-gray-400 text-sm">加载中...</p>
           </div>
         ) : plans.length === 0 ? (
@@ -82,7 +82,7 @@ export default function HistoryPage() {
             <p className="mb-2">还没有历史攻略</p>
             <button
               onClick={() => router.push("/recommend")}
-              className="mt-4 px-6 py-2 bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-medium rounded-full transition-all"
+              className="mt-4 px-6 py-2 bg-blue-500 hover:bg-blue-400 text-white text-sm font-medium rounded-full transition-all"
             >
               去生成一份
             </button>
