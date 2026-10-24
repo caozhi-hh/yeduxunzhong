@@ -27,9 +27,9 @@ export default function UserNav() {
     <div ref={dropdownRef} className="relative">
       <button
         onClick={() => setShowDropdown((v) => !v)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/20 transition-all"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface/10 backdrop-blur-md border border-white/20 hover:bg-white/20 transition-all"
       >
-        <div className="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-bold">
+        <div className="w-7 h-7 rounded-full bg-brand-700 text-white flex items-center justify-center text-xs font-bold">
           {initial}
         </div>
         <span className="text-sm text-white font-medium max-w-[80px] truncate">
@@ -38,15 +38,15 @@ export default function UserNav() {
       </button>
 
       {showDropdown && (
-        <div className="absolute right-0 mt-2 w-44 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-50">
+        <div className="absolute right-0 mt-2 w-44 bg-surface rounded-xl shadow-xl border border-line py-1.5 z-50">
           <Link
             href="/history"
             onClick={() => setShowDropdown(false)}
-            className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-600 transition-colors"
+            className="block px-4 py-2.5 text-sm text-ink-700 hover:bg-brand-50 hover:text-brand-700 transition-colors"
           >
             历史攻略
           </Link>
-          <hr className="my-1 border-gray-100" />
+          <hr className="my-1 border-line" />
           <button
             onClick={() => {
               logout();

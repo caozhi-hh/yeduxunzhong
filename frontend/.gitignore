@@ -31,6 +31,10 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files
+# R2 安全整改（2026-10-23）：这里原本有一条 `!.env.production` 反向规则，
+# 等于**特意**把生产环境配置放进仓库 —— 而它内含 NEXT_PUBLIC_AMAP_KEY / _SECRET，
+# 并已随历史提交公开（见 b431627）。现改为**忽略全部 .env***，不再放行任何环境文件。
+# 需要部署配置时请用部署平台的 Secrets/环境变量，不要提交进仓库。
 .env*
 
 # vercel

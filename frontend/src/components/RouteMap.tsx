@@ -128,8 +128,8 @@ export default function RouteMap({ spots, city, coords }: RouteMapProps) {
 
   if (error) {
     return (
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-6">
-        <div className="text-center text-gray-400 py-6">
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-line mb-6">
+        <div className="text-center text-ink-400 py-6">
           <span className="text-3xl">🗺️</span>
           <p className="mt-2 text-sm">{error}</p>
         </div>
@@ -138,14 +138,14 @@ export default function RouteMap({ spots, city, coords }: RouteMapProps) {
   }
 
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-6">
-      <h3 className="text-sm font-bold text-emerald-700 mb-3">🗺️ 景点路线图</h3>
+    <div className="bg-white rounded-2xl p-4 shadow-sm border border-line mb-6">
+      <h3 className="text-sm font-bold text-brand-700 mb-3">🗺️ 景点路线图</h3>
       <div className="relative rounded-xl overflow-hidden" style={{ height: "360px" }}>
         {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
+          <div className="absolute inset-0 flex items-center justify-center bg-paper-2 z-10">
             <div className="text-center">
-              <div className="w-8 h-8 border-3 border-emerald-200 border-t-emerald-500 rounded-full animate-spin mx-auto mb-2" />
-              <p className="text-gray-400 text-sm">加载地图中...</p>
+              <div className="w-8 h-8 border-3 border-brand-200 border-t-blue-500 rounded-full animate-spin mx-auto mb-2" />
+              <p className="text-ink-400 text-sm">加载地图中...</p>
             </div>
           </div>
         )}

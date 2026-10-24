@@ -1,0 +1,33 @@
+# 构建上下文 = 项目根目录（backend/Dockerfile 里是 COPY backend/ ...）
+# 目的：不让密钥与运行时产物进入镜像层。
+# ⚠️ 排除 .env 后，HF Spaces 必须自己提供环境变量，否则会静默回落到代码默认值。
+#    野渡寻踪 backend 读的是：ZHIPU_API_KEY / ZHIPU_BASE_URL / CHAT_MODEL /
+#    JWT_SECRET / UNSPLASH_ACCESS_KEY / AMAP_WEB_KEY
+
+# 密钥（最重要：绝不能进镜像）
+.env
+.env.*
+**/.env
+**/.env.*
+
+# 运行时产物与数据库
+*.db
+output/
+backend/data/
+
+# Python 缓存
+**/__pycache__/
+**/*.pyc
+
+# 前端依赖与构建产物（镜像内会重新 npm ci + build）
+**/node_modules/
+**/.next/
+frontend/out/
+
+# 仓库/工具杂项
+.git/
+.claude/
+.vscode/
+.streamlit/
+tasks/
+node_modules/

@@ -1,0 +1,17 @@
+# ==================== 开发/测试依赖（T1-0 新增）====================
+#
+# 用途：为预算系统 v2 的 TDD 提供最小测试地基。**仅开发与测试环境安装**，
+# 生产运行不需要 —— 因此刻意不写入 backend/requirements.txt（那是 Dockerfile
+# 与部署用的运行时声明，见 Dockerfile 第 5-6 行），避免把测试框架带进镜像。
+#
+# 安装方式（项目内隔离 venv，见 T1-0 报告）：
+#   .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+#
+# 版本策略：**精确锁定**。理由：本机 Python 为 3.14.3（2026 年较新的解释器），
+# pytest 9.x / pytest-asyncio 1.x 是首批完整支持 3.14 的版本线；放宽为 >=
+# 会在后续安装时静默拉到未经验证的版本，破坏"可复现"这一本轮核心目标。
+#
+# 实测环境：Python 3.14.3 (win_amd64) / pytest 9.1.1 / pytest-asyncio 1.4.0
+# 实测日期：见 T1-0 交付报告
+pytest==9.1.1
+pytest-asyncio==1.4.0

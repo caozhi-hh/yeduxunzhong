@@ -11,3 +11,9 @@ frontend/out/
 backend/__pycache__/
 backend/tools/__pycache__/
 backend/data/
+# 本地自动生成的 JWT 签名密钥（2026-10-10 起；绝不能进仓库）
+backend/.jwt_secret
+# 项目本地 Python 虚拟环境（T1-0 建立，用于 pytest，不随源码分发）
+.venv/
+# pytest 在受限环境下会留下无法删除的临时缓存目录（T1-0 实测），忽略之
+pytest-cache-files-*/

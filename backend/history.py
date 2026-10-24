@@ -92,6 +92,35 @@ async def update_plan_text(plan_id: int, user_id: int, plan_text: str) -> bool:
         await db.close()
 
 
+async def update_plan(user_id: int, plan_id: int, data: dict) -> bool:
+    """就地更新一条已有攻略。
+
+    2026-10-10 修复：对话里每改一版攻略，前端都会回存一次；旧实现无条件 INSERT，
+    于是同一份攻略在历史列表里刷出一长串重复条目。带 plan_id 时改为更新同一条。
+
+    只刷新会随修改变化的字段（plan_text / spots / recommendation）与 updated_at，
+    其余字段（出发地、天数、预算等）保留首次生成时的值。
+    """
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            """UPDATE plans
+               SET plan_text=?, spots=?, recommendation=?, updated_at=datetime('now')
+               WHERE id=? AND user_id=?""",
+            (
+                data.get("plan_text", ""),
+                json.dumps(data.get("spots", []), ensure_ascii=False),
+                data.get("recommendation", ""),
+                plan_id,
+                user_id,
+            ),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+    finally:
+        await db.close()
+
+
 async def delete_plan(plan_id: int, user_id: int) -> bool:
     db = await get_db()
     try:

@@ -1,19 +1,156 @@
 @import "tailwindcss";
 
-:root {
-  --background: #F9FAFB;
-  --foreground: #333333;
+/* ============================================================================
+   设计 token —— 高端旅行杂志感
+   ============================================================================
+   改版前的问题：这个文件只有 19 行、2 个颜色变量，颜色全靠行内工具类硬编码
+   （实测 bg-white 49 行 / text-gray-400 48 行 / rounded-2xl 31 行 / bg-blue-500 14 行）。
+   改一个颜色要动几十处，风格永远统一不了 —— 所以先把 token 立起来。
+
+   风格依据（用户确认）：
+     主色 = 深墨绿 #1F3A34（杂志感、稳重，明确排除"黑色科技 AI 产品"）
+     底色 = 暖白纸感，不是原来的冷蓝 #F0F4FF
+     强调 = 赭石橙（CTA 用，暖调，与墨绿互补）
+     质感 = 靠留白与大图，不靠阴影和渐变
+   ========================================================================== */
+
+@theme {
+  /* ---- 品牌色：深墨绿 ---- */
+  --color-brand-50: #f3f7f5;
+  --color-brand-100: #dde8e3;
+  --color-brand-200: #b9cfc6;
+  --color-brand-300: #8fb0a3;
+  --color-brand-400: #5e8a79;
+  --color-brand-500: #3c6b58;
+  --color-brand-600: #2a5044;
+  --color-brand-700: #1f3a34; /* 主色 */
+  --color-brand-800: #172c27;
+  --color-brand-900: #101f1b;
+
+  /* ---- 强调色：赭石橙（只用在小面积 CTA/强调）---- */
+  --color-accent-50: #fdf6f1;
+  --color-accent-100: #f8e6d8;
+  --color-accent-200: #efc8ac;
+  --color-accent-300: #e0a37a;
+  --color-accent-400: #d98a5a;
+  --color-accent-500: #c4703a;
+  --color-accent-600: #a65a2c;
+  --color-accent-700: #83461f;
+
+  /* ---- 中性色：暖白纸感 ---- */
+  --color-paper: #faf8f4; /* 页面底 */
+  --color-paper-2: #f4f1ea; /* 次级底 / 分区 */
+  --color-surface: #ffffff; /* 卡片 */
+  --color-line: #e8e4dc; /* 描边（替代阴影来分层）*/
+  --color-line-strong: #d8d2c6;
+  --color-ink-900: #171717; /* 一级文字 */
+  --color-ink-700: #3d3d3d;
+  --color-ink-600: #6b6b6b; /* 二级文字 */
+  --color-ink-400: #9c9c9c; /* 辅助文字 */
+  --color-ink-300: #c4c4c4;
+
+  /* ---- 状态色（低饱和，避免刺眼）---- */
+  --color-danger-500: #b4443a;
+  --color-warn-500: #b4832f;
+  --color-ok-500: #3f7d5c;
+
+  /* ---- 圆角分级（原来 rounded-2xl 到处用，没有层级）---- */
+  --radius-control: 10px; /* 按钮 / 输入框 */
+  --radius-image: 12px; /* 图片 */
+  --radius-card: 16px; /* 卡片 */
+  --radius-sheet: 20px; /* 大面板 */
+
+  /* ---- 字体：标题衬线做杂志感，正文无衬线 ---- */
+  /* ⚠️ 刻意**不用 next/font/google**：实测构建时会因取不到 Google Fonts 直接失败
+     （Inter / Geist Mono —— Google 系在大陆不可达，之前成功只是命中缓存）。
+     改用系统字体栈：构建稳定、首屏零外部字体请求。 */
+  --font-display: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", Georgia,
+    "Times New Roman", serif;
+  --font-sans: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", system-ui, -apple-system,
+    "Segoe UI", Roboto, Arial, sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
+/* ============================================================================
+   基础层
+   ========================================================================== */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink-900);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 标题用衬线，拉开与正文的层级 —— 杂志感的关键一步 */
+h1,
+h2 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+/* 图片统一处理：避免破图，也给加载一个柔和的底 */
+img {
+  background: var(--color-paper-2);
+}
+
+/* 细滚动条，避免 Windows 默认粗条破坏质感 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ============================================================================
+   复用样式（少量，复杂组件仍走 React 组件）
+   ========================================================================== */
+
+/* 图片上的文字压底：杂志排版常用，保证白字在任何图上都可读 */
+.img-scrim {
+  background: linear-gradient(
+    to top,
+    rgb(0 0 0 / 0.62) 0%,
+    rgb(0 0 0 / 0.28) 38%,
+    rgb(0 0 0 / 0) 72%
+  );
+}
+
+/* 骨架屏：照片/内容未到时的柔和占位（原来只有灰块） */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-paper-2) 25%,
+    #efeae1 37%,
+    var(--color-paper-2) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+/* 尊重系统的"减少动效"设置 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
